@@ -41,7 +41,7 @@ export class NarrativeScene {
         #ns-bg {
           position: absolute;
           inset: 0;
-          background-image: url('/images/menu-bg.png');
+          background-image: url('/images/main-menu-bg.png');
           background-size: cover;
           background-position: center;
           filter: brightness(0.25) saturate(0.6);

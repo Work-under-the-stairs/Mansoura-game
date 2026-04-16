@@ -34,11 +34,10 @@ export class MainMenuScene {
         #mm-bg {
           position: absolute;
           inset: 0;
-          background-image: url('/images/menu-bg.png');
+          background-image: url('/images/main-menu-bg.png');
           background-size: cover;
           background-position: center top;
           z-index: 0;
-          transform: scale(1.04);
           animation: mm-slow-zoom 20s ease-in-out infinite alternate;
         }
 
@@ -590,12 +589,12 @@ export class MainMenuScene {
 
         <!-- Bottom bar -->
         <div id="mm-bottom">
-          <div id="mm-version">v1.0.0 · 2024</div>
+          <div id="mm-version">v1.0.0 · 2026</div>
           <div id="mm-lore">
             <div id="mm-lore-title">نبذة تاريخية</div>
             <div id="mm-lore-text">
               في سماء المنصورة، خاض الطيارون المصريون أعنف المعارك الجوية
-              في تاريخ الشرق الأوسط ضد أحدث الطائرات الإسرائيلية.
+              في العالم ضد أحدث الطائرات الإسرائيلية.
             </div>
           </div>
         </div>

@@ -52,7 +52,7 @@ export class LoadingScene {
         #ls-bg {
           position: absolute;
           inset: 0;
-          background-image: url('/images/loading-bg.png');
+          background-image: url('/images/loading-bg2.png');
           background-size: cover;
           background-position: center;
           filter: brightness(0.55);
