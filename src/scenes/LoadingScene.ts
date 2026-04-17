@@ -27,7 +27,7 @@ export class LoadingScene {
   }
 
   // =============================
-  //  HTML + CSS للشاشة
+  //  HTML + CSS
   // =============================
   private createOverlay(): HTMLElement {
     const el = document.createElement('div');
@@ -48,7 +48,6 @@ export class LoadingScene {
           direction: rtl;
         }
 
-        /* الخلفية مع التظليل */
         #ls-bg {
           position: absolute;
           inset: 0;
@@ -59,7 +58,6 @@ export class LoadingScene {
           z-index: 0;
         }
 
-        /* gradient فوق الصورة */
         #ls-gradient {
           position: absolute;
           inset: 0;
@@ -71,7 +69,6 @@ export class LoadingScene {
           z-index: 1;
         }
 
-        /* المحتوى */
         #ls-content {
           position: relative;
           z-index: 2;
@@ -101,7 +98,6 @@ export class LoadingScene {
           margin: -8px 0 0;
         }
 
-        /* شريط التحميل */
         #ls-bar-wrap {
           width: 100%;
           display: flex;
@@ -135,7 +131,6 @@ export class LoadingScene {
           position: relative;
         }
 
-        /* خطوط خفيفة داخل البار */
         #ls-bar-outer::before {
           content: '';
           position: absolute;
@@ -156,7 +151,6 @@ export class LoadingScene {
           position: relative;
         }
 
-        /* الخط المضيء عند نهاية البار */
         #ls-fill::after {
           content: '';
           position: absolute;
@@ -169,7 +163,6 @@ export class LoadingScene {
           box-shadow: 0 0 8px #ffffff;
         }
 
-        /* الماسات */
         #ls-diamonds {
           display: flex;
           gap: 10px;
@@ -204,7 +197,7 @@ export class LoadingScene {
           min-height: 18px;
         }
 
-        /* fade out عند الانتهاء */
+        /* fade out */
         #loading-screen.fade-out {
           opacity: 0;
           transition: opacity 0.8s ease;
@@ -245,21 +238,16 @@ export class LoadingScene {
     return el;
   }
 
-  // =============================
-  //  تحديث الـ progress يدوياً
-  //  (هتستخدميها مع THREE.LoadingManager)
-  // =============================
+
   public updateProgress(progress: number): void {
     const clamped = Math.min(Math.max(progress, 0), 100);
 
     this.progressBar.style.width = clamped + '%';
     this.progressText.textContent = Math.round(clamped) + '%';
 
-    // تحديث نص الـ tip
     const tipIndex = Math.floor((clamped / 100) * this.tips.length);
     this.tipText.textContent = this.tips[Math.min(tipIndex, this.tips.length - 1)];
 
-    // تفعيل الماسات
     if (this.diamonds) {
       const activeCount = Math.floor((clamped / 100) * 3);
       this.diamonds.forEach((d, i) => {
@@ -268,9 +256,7 @@ export class LoadingScene {
     }
   }
 
-  // =============================
-  //  ربط مع THREE.LoadingManager
-  // =============================
+
   public attachToLoadingManager(manager: THREE.LoadingManager): void {
     manager.onProgress = (_url, loaded, total) => {
       const progress = (loaded / total) * 100;
@@ -287,9 +273,6 @@ export class LoadingScene {
     };
   }
 
-  // =============================
-  //  إخفاء الشاشة
-  // =============================
   public hide(): void {
     this.overlay.classList.add('fade-out');
     setTimeout(() => {
@@ -298,9 +281,6 @@ export class LoadingScene {
     }, 800);
   }
 
-  // =============================
-  //  callback بعد الانتهاء
-  // =============================
   public onComplete(callback: () => void): void {
     this.onCompleteCallback = callback;
   }
