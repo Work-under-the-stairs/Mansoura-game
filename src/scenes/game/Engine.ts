@@ -1,26 +1,31 @@
 import * as THREE from 'three';
 import { World } from './World';
+import { Cockpit } from './Cockpit';
+import { Controls } from './Controls';
 
 export class Engine {
-  private scene!: THREE.Scene;
-  private camera!: THREE.PerspectiveCamera;
-  private renderer!: THREE.WebGLRenderer;
-  private world!: World;
-  private container!: HTMLDivElement;
+  private scene: THREE.Scene;
+  private camera: THREE.PerspectiveCamera;
+  private renderer: THREE.WebGLRenderer;
+  private cockpit: Cockpit;
+  private controls: Controls;
+  private world: World;
+  private container: HTMLDivElement;
   private clock = new THREE.Clock();
   private animationFrameId = 0;
 
-  public init(): void {
-    this.createContainer();
-    this.createScene();
-    this.createRenderer();
-    this.createCamera();
-    this.createWorld();
-    this.animate();
-    window.addEventListener('resize', this.onResize);
-  }
+  constructor() {
+    this.scene = new THREE.Scene();
 
-  private createContainer(): void {
+    this.camera = new THREE.PerspectiveCamera(
+      52,
+      window.innerWidth / window.innerHeight,
+      1,
+      80000,
+    );
+    this.camera.position.set(450, 1450, 6200);
+    this.camera.lookAt(900, 240, -12000);
+
     const existing = document.getElementById('game-world-root');
     if (existing) existing.remove();
 
@@ -28,65 +33,90 @@ export class Engine {
     this.container.id = 'game-world-root';
     this.container.style.position = 'fixed';
     this.container.style.inset = '0';
-    this.container.style.background = 'linear-gradient(180deg, #9fd3ff 0%, #d9ecff 45%, #f3efe1 100%)';
+    this.container.style.background = 'linear-gradient(180deg, #88bbed 0%, #d9ecff 55%, #ede2c9 100%)';
     this.container.style.zIndex = '5';
     document.body.appendChild(this.container);
-  }
 
-  private createScene(): void {
-    this.scene = new THREE.Scene();
-  }
-
-  private createRenderer(): void {
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      powerPreference: 'high-performance',
+    });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.0;
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.container.appendChild(this.renderer.domElement);
-  }
 
-  private createCamera(): void {
-    this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 50000);
-    this.camera.position.set(0, 900, 1700);
-    this.camera.lookAt(0, 0, -3200);
-  }
-
-  private createWorld(): void {
+    this.controls = new Controls();
     this.world = new World(this.scene, {
-      terrainSize: 26000,
-      terrainSegments: 280,
-      riverWidth: 360,
-      cloudCount: 16,
+      terrainSize: 42000,
+      terrainSegments: 420,
+      riverWidth: 420,
+      cloudCount: 10,
     });
+    this.cockpit = new Cockpit(this.scene, this.camera, this.controls);
+
+    this.setupLights();
+    this.createEnvironment();
+    window.addEventListener('resize', this.onWindowResize);
   }
 
-  private animate = (): void => {
-    this.animationFrameId = window.requestAnimationFrame(this.animate);
+  private setupLights(): void {
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.35);
+    this.scene.add(ambientLight);
 
-    const delta = this.clock.getDelta();
-    const elapsed = this.clock.elapsedTime;
+    const sunLight = new THREE.DirectionalLight(0xfff3d0, 2.2);
+    sunLight.position.set(-9000, 8500, -5000);
+    sunLight.castShadow = true;
+    sunLight.shadow.mapSize.set(2048, 2048);
+    this.scene.add(sunLight);
 
-    this.camera.position.x = Math.sin(elapsed * 0.08) * 220;
-    this.camera.position.y = 900 + Math.sin(elapsed * 0.12) * 30;
-    this.camera.position.z = 1700 - elapsed * 55;
-    this.camera.lookAt(0, 80, this.camera.position.z - 3800);
+    const hemi = new THREE.HemisphereLight(0xe7f3ff, 0x97886a, 1.25);
+    this.scene.add(hemi);
+  }
 
-    this.world.update(delta);
-    this.renderer.render(this.scene, this.camera);
-  };
+  private createEnvironment(): void {
+    this.scene.background = new THREE.Color(0xa9cff5);
+    this.scene.fog = new THREE.Fog(0xcad9e6, 9000, 52000);
+  }
 
-  private onResize = (): void => {
+  public init(): void {
+    this.animate();
+  }
+
+  private onWindowResize = (): void => {
     this.camera.aspect = window.innerWidth / window.innerHeight;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(window.innerWidth, window.innerHeight);
   };
 
+  private animate = (): void => {
+    this.animationFrameId = window.requestAnimationFrame(this.animate);
+
+    const delta = this.clock.getDelta();
+
+    if (this.cockpit) {
+      this.cockpit.update();
+    }
+
+    if (this.world) {
+      this.world.update(delta);
+    }
+
+    this.renderer.render(this.scene, this.camera);
+  };
+
   public destroy(): void {
     window.cancelAnimationFrame(this.animationFrameId);
-    window.removeEventListener('resize', this.onResize);
-    this.world.dispose();
+    window.removeEventListener('resize', this.onWindowResize);
+
+    if (this.world) {
+      this.world.dispose();
+    }
+
     this.renderer.dispose();
     this.container.remove();
   }

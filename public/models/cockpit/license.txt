@@ -1,0 +1,11 @@
+Model Information:
+* title:	The Spitfire Cockpit experience
+* source:	https://sketchfab.com/3d-models/the-spitfire-cockpit-experience-fff15c46761b43049520cca82b5b4334
+* author:	Alexios Apokaukos (https://sketchfab.com/Alexios_Apokaukos)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "The Spitfire Cockpit experience" (https://sketchfab.com/3d-models/the-spitfire-cockpit-experience-fff15c46761b43049520cca82b5b4334) by Alexios Apokaukos (https://sketchfab.com/Alexios_Apokaukos) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

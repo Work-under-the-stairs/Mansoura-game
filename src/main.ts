@@ -1,6 +1,6 @@
 import { LoadingScene } from './scenes/LoadingScene';
 import { MainMenuScene } from './scenes/MainMenuScene';
-import { NarrativeScene } from './scenes/NarrativeScene'; 
+import { NarrativeScene } from './scenes/NarrativeScene';
 import { Engine } from './scenes/game/Engine';
 
 const loading = new LoadingScene(document.body);
@@ -29,6 +29,8 @@ loading.onComplete(() => {
     narrative.show();
 
     narrative.onComplete(() => {
+      console.log('اللعبة بدأت!');
+
       const gameEngine = new Engine();
       gameEngine.init();
     });
