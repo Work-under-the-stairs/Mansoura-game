@@ -17,8 +17,12 @@ export class NarrativeScene {
   private actions: THREE.AnimationAction[] = [];
   private mixerPaused = false;
 
-  private readonly text =
-"معركة المنصورة الجوية: هي معركة جوية وقعت في 14 أكتوبر 1973 في طنطا والمنصورة والصالحية. وكانت أكبر هجوم جوي تشنه إسرائيل بقوة قُدرت بحوالي 120 طائرة إسرائيلية وقد انتهت بالنصر للقوات المصرية بعد أطول وأكبر معركة جوية استمرت 53 دقيقة.";
+  private readonly pages: string[] = [
+    "معركة المنصورة الجوية: هي معركة جوية وقعت في 14 أكتوبر 1973 في طنطا والمنصورة والصالحية. وكانت أكبر هجوم جوي تشنه إسرائيل بقوة قُدرت بحوالي 120 طائرة إسرائيلية.",
+    "وقد انتهت المعركة بالنصر للقوات المصرية بعد أطول وأكبر معركة جوية استمرت 53 دقيقة. وكانت هذه المعركة علامة فارقة في تاريخ سلاح الجو المصري.",
+  ];
+  private currentPage = 0;
+  private typingInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(private container: HTMLElement) {
     this.overlay = this.createOverlay();
@@ -198,48 +202,111 @@ export class NarrativeScene {
 
         #ns-text-container {
           position: absolute;
-          top: 30%;
-          left: 50%;
-          transform: translateX(-50%);
+          /* Extreme margins to force text into a narrow central column */
+          top: 25%;
+          bottom: 25%;
+          left: 30%;
+          right: 30%;
+          
+          /* Strictly limit the width to 40% of the screen */
+          width: 40%;
+          max-width: 40vw;
+          margin: 0 auto;
 
-          width: 600px; 
-          max-height: 400px;
-
-          text-align: right; 
+          text-align: center;
           font-family: 'Amiri', serif;
           color: #2b1b0a;
-          text-shadow: 0.5px 0.5px 1px rgba(0,0,0,0.15);
+          text-shadow: 0.5px 0.5px 1px rgba(0,0,0,0.1);
           
           direction: rtl;
-          font-size: 1.7rem; 
-          font-weight: 400;
-          line-height: 2.5;
+          /* Even more conservative font sizing for safety */
+          font-size: clamp(0.9rem, 1.8vw, 1.2rem);
+          font-weight: 700;
+          line-height: 1.5;
 
           display: flex;
           flex-direction: column;
-          justify-content: flex-start; 
+          justify-content: center;
+          align-items: center;
 
-          overflow: visible;
+          overflow: hidden;
           white-space: pre-wrap; 
-          word-break: break-word;
+          word-break: normal;
           overflow-wrap: break-word;
 
-          padding: 10px 40px; 
+          padding: 10px 15px;
           z-index: 10;
           pointer-events: none;
+          box-sizing: border-box;
         }
 
         #ns-text-content {
-           min-height: 100%;
+           width: 100%;
+           max-height: 100%;
+        }
+
+        #ns-next-btn {
+          position: absolute;
+          bottom: 18%;
+          left: 50%;
+          transform: translateX(-50%);
+          z-index: 20;
+
+          font-family: 'Amiri', serif;
+          font-size: 1.1rem;
+          color: #2b1b0a;
+          background: rgba(205, 170, 100, 0.35);
+          border: 2px solid #8b6914;
+          border-radius: 8px;
+          padding: 8px 32px;
+          cursor: pointer;
+          letter-spacing: 0.05em;
+          transition: background 0.2s, transform 0.15s;
+          display: none;
+          pointer-events: all;
+          direction: rtl;
+        }
+
+        #ns-next-btn:hover {
+          background: rgba(205, 170, 100, 0.65);
+          transform: translateX(-50%) scale(1.05);
+        }
+
+        #ns-page-indicator {
+          position: absolute;
+          bottom: 13%;
+          left: 50%;
+          transform: translateX(-50%);
+          z-index: 20;
+          display: flex;
+          gap: 8px;
+          pointer-events: none;
+        }
+
+        .ns-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background: #8b6914;
+          opacity: 0.3;
+          transition: opacity 0.3s;
+        }
+
+        .ns-dot.active {
+          opacity: 1;
         }
       </style>
-
       <div id="ns-bg"></div>
       <div id="ns-bg-overlay"></div>
 
       <div id="ns-scroll-area">
         <div id="ns-text-container">
           <div id="ns-text-content"></div>
+        </div>
+        <button id="ns-next-btn">التالي ›</button>
+        <div id="ns-page-indicator">
+          <div class="ns-dot active"></div>
+          <div class="ns-dot"></div>
         </div>
       </div>
     `;
@@ -264,25 +331,97 @@ export class NarrativeScene {
   }
 
   private _startTyping() {
-    const content = this.overlay.querySelector(
-      "#ns-text-content"
-    ) as HTMLElement;
-    if (!content) return;
-    
-    content.textContent = ""; 
+    this.currentPage = 0;
+    this._typeCurrentPage();
+  }
+
+  private _typeCurrentPage() {
+    const container = this.overlay.querySelector("#ns-text-container") as HTMLElement;
+    const content = this.overlay.querySelector("#ns-text-content") as HTMLElement;
+    const nextBtn = this.overlay.querySelector("#ns-next-btn") as HTMLButtonElement;
+    const dots = this.overlay.querySelectorAll(".ns-dot");
+    if (!content || !container) return;
+
+    // Clear previous state
+    if (this.typingInterval) clearInterval(this.typingInterval);
+    nextBtn.style.display = "none";
+    content.textContent = "";
+
+    // Update page dots
+    dots.forEach((d, i) => {
+      d.classList.toggle("active", i === this.currentPage);
+    });
+
+    const pageText = this.pages[this.currentPage];
     let i = 0;
 
-    const interval = setInterval(() => {
-      if (i < this.text.length) {
-        content.textContent += this.text[i];
+    this.typingInterval = setInterval(() => {
+      if (i < pageText.length) {
+        content.textContent += pageText[i];
         i++;
+
+        // Strict vertical overflow check
+        if (content.scrollHeight > container.clientHeight) {
+          content.textContent = content.textContent.slice(0, -1);
+          clearInterval(this.typingInterval!);
+          this.typingInterval = null;
+          this._handlePageEnd(nextBtn);
+        }
       } else {
-        clearInterval(interval);
-        setTimeout(() => {
-          if (this.onCompleteCallback) this.onCompleteCallback();
-        }, 5000);
+        clearInterval(this.typingInterval!);
+        this.typingInterval = null;
+        this._handlePageEnd(nextBtn);
       }
     }, 60);
+  }
+
+  private _handlePageEnd(nextBtn: HTMLButtonElement) {
+    const content = this.overlay.querySelector("#ns-text-content") as HTMLElement;
+    const isLastPage = this.currentPage === this.pages.length - 1;
+
+    if (!isLastPage) {
+      nextBtn.style.display = "block";
+      nextBtn.textContent = "التالي ›";
+      nextBtn.onclick = () => {
+        nextBtn.style.display = "none";
+        // Clear text content before starting transition
+        if (content) content.textContent = "";
+        this.currentPage++;
+        this._closeAndReopenScroll(() => this._typeCurrentPage());
+      };
+    } else {
+      // Show "ابدأ" button on the last page
+      nextBtn.style.display = "block";
+      nextBtn.textContent = "ابدأ";
+      nextBtn.onclick = () => {
+        nextBtn.style.display = "none";
+        if (this.onCompleteCallback) this.onCompleteCallback();
+      };
+    }
+  }
+
+  private _closeAndReopenScroll(onDone: () => void) {
+    // Play close animation
+    if (this.mixer && this.actions.length > 0) {
+      this.mixerPaused = false;
+      this.mixer.stopAllAction();
+      this.actions.forEach((action) => {
+        const clip = action.getClip();
+        action.reset();
+        action.setLoop(THREE.LoopOnce, 1);
+        action.clampWhenFinished = true;
+        action.timeScale = -1;
+        action.time = clip.duration;
+        action.play();
+      });
+    }
+
+    // After close, re-open and type next page
+    setTimeout(() => {
+      this.mixerPaused = true;
+      this.playOpenAnimations();
+      setTimeout(() => onDone(), 4000);
+    }, 1800);
   }
 
   private animate = () => {
