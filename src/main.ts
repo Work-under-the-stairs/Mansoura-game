@@ -1,6 +1,7 @@
 import { LoadingScene }   from './scenes/LoadingScene';
 import { MainMenuScene }  from './scenes/MainMenuScene';
 import { NarrativeScene } from './scenes/NarrativeScene';
+import { Engine } from './scenes/game/Engine';
 
 // ── Loading Screen ──────────────────────────────────────────────────────────
 const loading = new LoadingScene(document.body);
@@ -34,6 +35,10 @@ loading.onComplete(() => {
     narrative.onComplete(() => {
       console.log('اللعبة بدأت!');
       // TODO: launch the actual game scene here
+      narrative.hide(); 
+
+      const gameEngine = new Engine();
+      gameEngine.init();
     });
   });
 });
