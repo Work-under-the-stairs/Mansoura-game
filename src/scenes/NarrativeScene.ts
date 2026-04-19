@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
+import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 export class NarrativeScene {
   private renderer!: THREE.WebGLRenderer;
@@ -78,15 +78,16 @@ export class NarrativeScene {
     const loader = new GLTFLoader();
     loader.load(
       "/models/paperScrollDone.glb",
-      (gltf) => {
-        this.scrollMesh = gltf.scene;
-        this.scrollMesh.rotation.x = Math.PI / 2;
-        this.scrollMesh.rotation.y = Math.PI;
-        this.scrollMesh.scale.set(1.6, 1.2, 1.2);
-        this.scene.add(this.scrollMesh);
+      (gltf: GLTF) => {
+        const scrollMesh = gltf.scene;
+        this.scrollMesh = scrollMesh;
+        scrollMesh.rotation.x = Math.PI / 2;
+        scrollMesh.rotation.y = Math.PI;
+        scrollMesh.scale.set(1.6, 1.2, 1.2);
+        this.scene.add(scrollMesh);
 
         this.gltfAnimations = gltf.animations;
-        this.mixer = new THREE.AnimationMixer(this.scrollMesh);
+        this.mixer = new THREE.AnimationMixer(scrollMesh);
 
         this.actions = this.gltfAnimations.map((clip) => {
           const action = this.mixer!.clipAction(clip);
@@ -104,7 +105,7 @@ export class NarrativeScene {
         }
       },
       undefined,
-      (error) => console.error("Error loading model:", error)
+      (error: unknown) => console.error("Error loading model:", error)
     );
   }
 
@@ -395,6 +396,7 @@ export class NarrativeScene {
       nextBtn.textContent = "ابدأ";
       nextBtn.onclick = () => {
         nextBtn.style.display = "none";
+        this.hide();
         if (this.onCompleteCallback) this.onCompleteCallback();
       };
     }
@@ -437,7 +439,16 @@ export class NarrativeScene {
     this.onCompleteCallback = callback;
   }
 
+  public hide(): void {
+    this.destroy();
+  }
+
   public destroy() {
+    if (this.typingInterval) {
+      clearInterval(this.typingInterval);
+      this.typingInterval = null;
+    }
+
     window.removeEventListener("resize", this.onResize);
     this.renderer.dispose();
     this.renderer.domElement.remove();
