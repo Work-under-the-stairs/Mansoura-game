@@ -44,12 +44,12 @@ export class Cockpit {
             this.model.add(this.camera);
 
             // Verified camera alignment
-            this.camera.position.set(0, 0.166, -0.276);
+            this.camera.position.set(0, 0.165, -0.276);
             this.camera.lookAt(0, 0, 0.276);
             this.camera.rotation.y = Math.PI;
 
             // --- Interior Lighting ---
-            const dashLight = new THREE.SpotLight(0xffffff, 10);
+            const dashLight = new THREE.SpotLight(0xffffff, 3);
             dashLight.position.set(0, 0.5, -0.5);
             dashLight.angle = Math.PI / 3; 
             dashLight.penumbra = 0.3;
