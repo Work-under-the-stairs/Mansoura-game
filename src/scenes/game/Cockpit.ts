@@ -31,10 +31,13 @@ export class Cockpit {
             this.model = gltf.scene;
             this.scene.add(this.model);
             
+            this.model.position.set(450, 1450, 6200); 
+
             this.model.add(this.camera);
 
-            this.camera.position.set(0, 0.25, -0.1);
-            this.camera.lookAt(0, 0.55, 1);
+            this.camera.position.set(0, 0.165, -0.276);
+            this.camera.lookAt(0, 0.1, 0.276);
+            this.camera.rotation.y = Math.PI;
 
             console.log('Cockpit Loaded (GLB Version)!');
         }, 

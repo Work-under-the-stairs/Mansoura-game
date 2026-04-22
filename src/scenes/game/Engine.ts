@@ -20,7 +20,7 @@ export class Engine {
     this.camera = new THREE.PerspectiveCamera(
       52,
       window.innerWidth / window.innerHeight,
-      1,
+      0.001,
       80000,
     );
     this.camera.position.set(450, 1450, 6200);
