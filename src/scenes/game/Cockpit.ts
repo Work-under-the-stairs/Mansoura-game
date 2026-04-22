@@ -27,7 +27,7 @@ export class Cockpit {
     private loadModel() {
         const loader = new GLTFLoader();
         
-        loader.load('/models/cockpit.glb', (gltf) => {
+        loader.load('/models/myCockpit.glb', (gltf) => {
             this.model = gltf.scene;
             this.scene.add(this.model);
             
@@ -35,11 +35,41 @@ export class Cockpit {
 
             this.model.add(this.camera);
 
-            this.camera.position.set(0, 0.165, -0.276);
-            this.camera.lookAt(0, 0.1, 0.276);
+            this.camera.position.set(0, 0.166, -0.276);
+            this.camera.lookAt(0, 0, 0.276);
             this.camera.rotation.y = Math.PI;
 
-            console.log('Cockpit Loaded (GLB Version)!');
+
+            const dashLight = new THREE.SpotLight(0xffffff, 5);
+            dashLight.position.set(0, 0.5, -0.5);
+            dashLight.angle = Math.PI / 3; 
+            dashLight.penumbra = 0.3;
+            dashLight.decay = 1.5;
+            dashLight.distance = 5;
+
+            const lightTarget = new THREE.Object3D();
+            lightTarget.position.set(0, 0, 0.5);
+            
+            this.model.add(dashLight);
+            this.model.add(lightTarget);
+            dashLight.target = lightTarget;
+
+            const ambientCabinLight = new THREE.PointLight(0x88ccff, 0.8, 3);
+            ambientCabinLight.position.set(0, 0.2, 0);
+            this.model.add(ambientCabinLight);
+
+            this.model.traverse((child) => {
+                if ((child as THREE.Mesh).isMesh) {
+                    const mesh = child as THREE.Mesh;
+                    mesh.castShadow = true;
+                    mesh.receiveShadow = true;
+                    if (mesh.material instanceof THREE.MeshStandardMaterial) {
+                        mesh.material.roughness = 0.6;
+                    }
+                }
+            });
+
+            console.log('Cockpit Loaded & Illuminated!');
         }, 
         (progress) => {
             console.log(`Loading: ${(progress.loaded / progress.total * 100).toFixed(2)}%`);

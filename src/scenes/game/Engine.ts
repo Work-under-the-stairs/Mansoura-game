@@ -65,10 +65,10 @@ export class Engine {
   }
 
   private setupLights(): void {
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.35);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
     this.scene.add(ambientLight);
 
-    const sunLight = new THREE.DirectionalLight(0xfff3d0, 2.2);
+    const sunLight = new THREE.DirectionalLight(0xfff3d0, 4);
     sunLight.position.set(-9000, 8500, -5000);
     sunLight.castShadow = true;
     sunLight.shadow.mapSize.set(2048, 2048);
