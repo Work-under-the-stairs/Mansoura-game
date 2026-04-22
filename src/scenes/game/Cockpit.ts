@@ -11,10 +11,15 @@ export class Cockpit {
     };
 
     private config = {
-        sensitivity: 0.0005,
-        damping: 0.95,
-        maxRotationSpeed: 0.03
+        sensitivity: 0.0006,   // Steering sensitivity
+        damping: 0.94,         // How fast rotation stops
+        maxRotationSpeed: 0.04,
+        minSpeed: 15,         // Cruising speed
+        maxSpeed: 20,         // Speed with Shift (Afterburner)
+        acceleration: 0.03     // How fast it gains speed
     };
+
+    private currentSpeed = 0.8;
 
     constructor(
         private scene: THREE.Scene, 
@@ -31,16 +36,20 @@ export class Cockpit {
             this.model = gltf.scene;
             this.scene.add(this.model);
             
+            // Set initial world position
             this.model.position.set(450, 1450, 6200); 
+            
 
+            // Attach camera to cockpit
             this.model.add(this.camera);
 
+            // Verified camera alignment
             this.camera.position.set(0, 0.166, -0.276);
             this.camera.lookAt(0, 0, 0.276);
             this.camera.rotation.y = Math.PI;
 
-
-            const dashLight = new THREE.SpotLight(0xffffff, 5);
+            // --- Interior Lighting ---
+            const dashLight = new THREE.SpotLight(0xffffff, 10);
             dashLight.position.set(0, 0.5, -0.5);
             dashLight.angle = Math.PI / 3; 
             dashLight.penumbra = 0.3;
@@ -69,7 +78,7 @@ export class Cockpit {
                 }
             });
 
-            console.log('Cockpit Loaded & Illuminated!');
+            console.log('Cockpit Loaded & Flight Ready!');
         }, 
         (progress) => {
             console.log(`Loading: ${(progress.loaded / progress.total * 100).toFixed(2)}%`);
@@ -84,7 +93,16 @@ export class Cockpit {
 
         const keys = this.controls.keys;
 
-        // Handle Pitch (Up/Down)
+        // --- 1. Throttle Logic (Speed) ---
+        // Boost speed if Shift is held, otherwise return to cruising speed
+        if (keys['ShiftLeft'] || keys['ShiftRight']) {
+            this.currentSpeed = THREE.MathUtils.lerp(this.currentSpeed, this.config.maxSpeed, this.config.acceleration);
+        } else {
+            this.currentSpeed = THREE.MathUtils.lerp(this.currentSpeed, this.config.minSpeed, this.config.acceleration * 0.5);
+        }
+
+        // --- 2. Pitch Control (Up/Down) ---
+        // Inverted: ArrowDown pulls up (climb), ArrowUp pushes down (dive)
         if (keys['ArrowUp']) {
             this.rotationSpeed.pitch = Math.max(this.rotationSpeed.pitch - this.config.sensitivity, -this.config.maxRotationSpeed);
         }
@@ -92,24 +110,32 @@ export class Cockpit {
             this.rotationSpeed.pitch = Math.min(this.rotationSpeed.pitch + this.config.sensitivity, this.config.maxRotationSpeed);
         }
 
-        // Handle Roll (Left/Right)
+        // --- 3. Roll Control (Left/Right) ---
         if (keys['ArrowLeft']) {
-            this.rotationSpeed.roll = Math.min(this.rotationSpeed.roll + this.config.sensitivity, this.config.maxRotationSpeed);
-        }
-        if (keys['ArrowRight']) {
             this.rotationSpeed.roll = Math.max(this.rotationSpeed.roll - this.config.sensitivity, -this.config.maxRotationSpeed);
         }
+        if (keys['ArrowRight']) {
+            this.rotationSpeed.roll = Math.min(this.rotationSpeed.roll + this.config.sensitivity, this.config.maxRotationSpeed);
+        }
 
-        // Apply Damping (Slowly stop rotation when keys are released)
+        // --- 4. Physics & Smoothing ---
         this.rotationSpeed.pitch *= this.config.damping;
         this.rotationSpeed.roll *= this.config.damping;
 
-        // Apply Rotations to the model
+        // Auto-leveling: Slowly return roll to 0 when no keys are pressed
+        if (!keys['ArrowLeft'] && !keys['ArrowRight']) {
+            this.model.rotation.z = THREE.MathUtils.lerp(this.model.rotation.z, 0, 0.05);
+        }
+
+        // --- 5. Applying Transformation ---
+        // Rotate the plane
         this.model.rotateX(this.rotationSpeed.pitch);
         this.model.rotateZ(this.rotationSpeed.roll);
 
-        // Optional: Constant forward movement to feel the flight
-        const forwardSpeed = 0.2;
-        this.model.translateZ(forwardSpeed);
+        // Yaw effect: Rolling automatically makes the plane turn slightly on Y axis
+        this.model.rotateY(-this.rotationSpeed.roll * 0.7);
+
+        // Constant forward movement
+        this.model.translateZ(this.currentSpeed);
     }
 }
