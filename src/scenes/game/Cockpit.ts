@@ -15,8 +15,8 @@ export class Cockpit {
         sensitivity: 0.0006,   // Steering sensitivity
         damping: 0.94,         // How fast rotation stops
         maxRotationSpeed: 0.04,
-        minSpeed: 15,         // Cruising speed
-        maxSpeed: 20,         // Speed with Shift (Afterburner)
+        minSpeed: 155,         // Cruising speed
+        maxSpeed: 200,         // Speed with Shift (Afterburner)
         acceleration: 0.03     // How fast it gains speed
     };
 
@@ -54,7 +54,7 @@ export class Cockpit {
             this.camera.rotation.y = Math.PI;
 
             // --- Interior Lighting ---
-            const dashLight = new THREE.SpotLight(0xffffff, 3);
+            const dashLight = new THREE.SpotLight(0xffffff, 1);
             dashLight.position.set(0, 0.5, -0.5);
             dashLight.angle = Math.PI / 3; 
             dashLight.penumbra = 0.3;
@@ -68,7 +68,7 @@ export class Cockpit {
             this.model.add(lightTarget);
             dashLight.target = lightTarget;
 
-            const ambientCabinLight = new THREE.PointLight(0x88ccff, 0.8, 3);
+            const ambientCabinLight = new THREE.PointLight(0x88ccff, 0.8, 1);
             ambientCabinLight.position.set(0, 0.2, 0);
             this.model.add(ambientCabinLight);
 

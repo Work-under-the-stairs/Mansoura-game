@@ -30,7 +30,7 @@ export class MobileControls {
   }
 
   private detectMobile(): boolean {
-    return true // just to test mobile controls on desktop, remove this line for real detection
+    // return true // just to test mobile controls on desktop, remove this line for real detection
     return (
       /Android|iPhone|iPad|iPod|Touch/i.test(navigator.userAgent) ||
       navigator.maxTouchPoints > 1 ||
