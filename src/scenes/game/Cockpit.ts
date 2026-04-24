@@ -2,69 +2,67 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader';
 import { Controls } from './Controls';
+import { WeaponSystem } from './WeaponSystem';
+import { ProjectileManager } from './ProjectileManager';
 
 export class Cockpit {
     public model: THREE.Group | null = null;
-    
-    private rotationSpeed = {
-        pitch: 0,
-        roll: 0
-    };
+    public weaponSystem: WeaponSystem | null = null;
+
+    public currentSpeed = 155;
+
+    private rotationSpeed = { pitch: 0, roll: 0 };
 
     private config = {
-        sensitivity: 0.0006,   // Steering sensitivity
-        damping: 0.94,         // How fast rotation stops
+        sensitivity:      0.0006,
+        damping:          0.94,
         maxRotationSpeed: 0.04,
-        minSpeed: 155,         // Cruising speed
-        maxSpeed: 200,         // Speed with Shift (Afterburner)
-        acceleration: 0.03     // How fast it gains speed
+        minSpeed:         155,
+        maxSpeed:         200,
+        acceleration:     0.03
     };
 
-    private currentSpeed = 0.8;
-
     constructor(
-        private scene: THREE.Scene, 
-        private camera: THREE.PerspectiveCamera, 
-        private controls: Controls,
-        private loadingManager: THREE.LoadingManager
+        private scene:              THREE.Scene,
+        private camera:             THREE.PerspectiveCamera,
+        private controls:           Controls,
+        private loadingManager:     THREE.LoadingManager,
+        private projectileManager:  ProjectileManager,
     ) {
         this.loadModel();
     }
 
-    private loadModel() {
+    private loadModel(): void {
         const loader = new GLTFLoader(this.loadingManager);
 
         const dracoLoader = new DRACOLoader(this.loadingManager);
-        dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/'); 
+        dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
         loader.setDRACOLoader(dracoLoader);
-        
+
         loader.load('/models/cockpitNew.glb', (gltf) => {
             this.model = gltf.scene;
             this.scene.add(this.model);
-            
-            // Set initial world position
-            this.model.position.set(450, 1450, 6200); 
-            
 
-            // Attach camera to cockpit
+            // this.model.position.set(450, 1450, 6200);
+
+            // Attach camera
             this.model.add(this.camera);
+            // this.camera.position.set(0, 0.165, -0.276);
+            // this.camera.lookAt(0, 0, 0.276);
+            this.camera.position.set(0, 0.24, -0.276);
+            this.camera.lookAt(0, 0.34, 0.276);
+            // this.camera.rotation.y = Math.PI;
 
-            // Verified camera alignment
-            this.camera.position.set(0, 0.165, -0.276);
-            this.camera.lookAt(0, 0, 0.276);
-            this.camera.rotation.y = Math.PI;
-
-            // --- Interior Lighting ---
+            // Interior lighting
             const dashLight = new THREE.SpotLight(0xffffff, 1);
             dashLight.position.set(0, 0.5, -0.5);
-            dashLight.angle = Math.PI / 3; 
+            dashLight.angle    = Math.PI / 3;
             dashLight.penumbra = 0.3;
-            dashLight.decay = 1.5;
+            dashLight.decay    = 1.5;
             dashLight.distance = 5;
 
             const lightTarget = new THREE.Object3D();
             lightTarget.position.set(0, 0, 0.5);
-            
             this.model.add(dashLight);
             this.model.add(lightTarget);
             dashLight.target = lightTarget;
@@ -76,7 +74,7 @@ export class Cockpit {
             this.model.traverse((child) => {
                 if ((child as THREE.Mesh).isMesh) {
                     const mesh = child as THREE.Mesh;
-                    mesh.castShadow = true;
+                    mesh.castShadow    = true;
                     mesh.receiveShadow = true;
                     if (mesh.material instanceof THREE.MeshStandardMaterial) {
                         mesh.material.roughness = 0.6;
@@ -84,8 +82,16 @@ export class Cockpit {
                 }
             });
 
+            // ✅ Model is guaranteed loaded here — safe to create WeaponSystem
+            this.weaponSystem = new WeaponSystem(
+                this.scene,
+                this.model,
+                this.controls,
+                this.projectileManager,
+            );
+
             console.log('Cockpit Loaded & Flight Ready!');
-        }, 
+        },
         (progress) => {
             console.log(`Loading: ${(progress.loaded / progress.total * 100).toFixed(2)}%`);
         },
@@ -94,21 +100,19 @@ export class Cockpit {
         });
     }
 
-    public update() {
+    public update(delta: number): void {
         if (!this.model) return;
 
         const keys = this.controls.keys;
-
-        // --- 1. Throttle Logic (Speed) ---
-        // Boost speed if Shift is held, otherwise return to cruising speed
+        
+        // 1. Throttle
         if (keys['ShiftLeft'] || keys['ShiftRight']) {
             this.currentSpeed = THREE.MathUtils.lerp(this.currentSpeed, this.config.maxSpeed, this.config.acceleration);
         } else {
             this.currentSpeed = THREE.MathUtils.lerp(this.currentSpeed, this.config.minSpeed, this.config.acceleration * 0.5);
         }
 
-        // --- 2. Pitch Control (Up/Down) ---
-        // Inverted: ArrowDown pulls up (climb), ArrowUp pushes down (dive)
+        // 2. Pitch
         if (keys['ArrowUp']) {
             this.rotationSpeed.pitch = Math.max(this.rotationSpeed.pitch - this.config.sensitivity, -this.config.maxRotationSpeed);
         }
@@ -116,7 +120,7 @@ export class Cockpit {
             this.rotationSpeed.pitch = Math.min(this.rotationSpeed.pitch + this.config.sensitivity, this.config.maxRotationSpeed);
         }
 
-        // --- 3. Roll Control (Left/Right) ---
+        // 3. Roll
         if (keys['ArrowLeft']) {
             this.rotationSpeed.roll = Math.max(this.rotationSpeed.roll - this.config.sensitivity, -this.config.maxRotationSpeed);
         }
@@ -124,24 +128,25 @@ export class Cockpit {
             this.rotationSpeed.roll = Math.min(this.rotationSpeed.roll + this.config.sensitivity, this.config.maxRotationSpeed);
         }
 
-        // --- 4. Physics & Smoothing ---
+        // 4. Physics
         this.rotationSpeed.pitch *= this.config.damping;
-        this.rotationSpeed.roll *= this.config.damping;
+        this.rotationSpeed.roll  *= this.config.damping;
 
-        // Auto-leveling: Slowly return roll to 0 when no keys are pressed
         if (!keys['ArrowLeft'] && !keys['ArrowRight']) {
             this.model.rotation.z = THREE.MathUtils.lerp(this.model.rotation.z, 0, 0.05);
         }
 
-        // --- 5. Applying Transformation ---
-        // Rotate the plane
+        // 5. Transform
         this.model.rotateX(this.rotationSpeed.pitch);
         this.model.rotateZ(this.rotationSpeed.roll);
-
-        // Yaw effect: Rolling automatically makes the plane turn slightly on Y axis
         this.model.rotateY(-this.rotationSpeed.roll * 0.7);
+        // this.model.translateZ(this.currentSpeed);
+        this.model.translateZ(-this.currentSpeed * delta);
 
-        // Constant forward movement
-        this.model.translateZ(this.currentSpeed);
+        // 6. Weapons
+        if (this.weaponSystem) {
+            this.weaponSystem.setCockpitSpeed(this.currentSpeed);
+            this.weaponSystem.update(delta);
+        }
     }
 }

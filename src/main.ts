@@ -13,15 +13,15 @@ const gameEngine = new Engine(loading);
 
 // لما التحميل يخلص — اعرض المنيو
 gameEngine.onReady(() => {
-  const menu = new MainMenuScene(document.body);
-  menu.show();
+  // const menu = new MainMenuScene(document.body);
+  // menu.show();
 
-  menu.onStart(() => {
-    const narrative = new NarrativeScene(document.body);
-    narrative.show();
+  // menu.onStart(() => {
+  //   const narrative = new NarrativeScene(document.body);
+  //   narrative.show();
 
-    narrative.onComplete(() => {
+  //   narrative.onComplete(() => {
       gameEngine.init();
     });
-  });
-});
+//   });
+// });

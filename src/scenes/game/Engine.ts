@@ -4,23 +4,25 @@ import { Cockpit } from './Cockpit';
 import { Controls } from './Controls';
 import { MobileControls } from './MobileControls';
 import { LoadingScene } from '../LoadingScene';
+import { ProjectileManager } from './ProjectileManager';
 
 export class Engine {
-  private loadingScene: LoadingScene;
-  private loadingManager: THREE.LoadingManager;
-  private scene: THREE.Scene;
-  private camera: THREE.PerspectiveCamera;
-  private renderer: THREE.WebGLRenderer;
-  private cockpit: Cockpit;
-  private controls: Controls;
-  private world: World;
-  private container: HTMLDivElement;
-  private clock = new THREE.Clock();
-  private animationFrameId = 0;
-  private mobileControls: MobileControls;
+  private loadingScene:      LoadingScene;
+  private loadingManager:    THREE.LoadingManager;
+  private scene:             THREE.Scene;
+  private camera:            THREE.PerspectiveCamera;
+  private renderer:          THREE.WebGLRenderer;
+  private cockpit:           Cockpit;
+  private controls:          Controls;
+  private world:             World;
+  private container:         HTMLDivElement;
+  private clock              = new THREE.Clock();
+  private animationFrameId   = 0;
+  private mobileControls:    MobileControls;
+  private projectileManager: ProjectileManager;
 
   constructor(loadingScene: LoadingScene) {
-    this.loadingScene = loadingScene;
+    this.loadingScene   = loadingScene;
     this.loadingManager = new THREE.LoadingManager();
     this.loadingScene.attachToLoadingManager(this.loadingManager);
 
@@ -41,42 +43,52 @@ export class Engine {
     this.container = document.createElement('div');
     this.container.id = 'game-world-root';
     this.container.style.position = 'fixed';
-    this.container.style.inset = '0';
-    this.container.style.zIndex = '5';
-    // this.container.style.background = 'linear-gradient(180deg, #88bbed 0%, #d9ecff 55%, #ede2c9 100%)';
+    this.container.style.inset    = '0';
+    this.container.style.zIndex   = '5';
     document.body.appendChild(this.container);
 
     this.renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      powerPreference: 'high-performance',
+      antialias:              true,
+      powerPreference:        'high-performance',
       logarithmicDepthBuffer: true,
     });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMapping         = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
-    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; 
+    this.renderer.outputColorSpace    = THREE.SRGBColorSpace;
+    this.renderer.shadowMap.enabled   = true;
+    this.renderer.shadowMap.type      = THREE.PCFSoftShadowMap;
     this.container.appendChild(this.renderer.domElement);
 
-    this.controls = new Controls();
+    this.controls       = new Controls();
     this.mobileControls = new MobileControls(this.container, this.controls);
 
     this.world = new World(
       this.scene,
       this.loadingManager,
       {
-        skyExrUrl: '/images/qwantani_afternoon_2k.exr',
-        terrainSize: 42000,
+        skyExrUrl:       '/images/qwantani_afternoon_2k.exr',
+        terrainSize:     42000,
         terrainSegments: 420,
-        riverWidth: 420,
-        cloudCount: 10,
+        riverWidth:      420,
+        cloudCount:      10,
       },
       this.renderer,
     );
 
-    this.cockpit = new Cockpit(this.scene, this.camera, this.controls, this.loadingManager);
+    // ProjectileManager needs only the scene — ready immediately
+    this.projectileManager = new ProjectileManager(this.scene);
+
+    // Cockpit receives projectileManager and creates WeaponSystem
+    // internally after the GLB finishes loading
+    this.cockpit = new Cockpit(
+      this.scene,
+      this.camera,
+      this.controls,
+      this.loadingManager,
+      this.projectileManager,
+    );
 
     this.setupLights();
     this.createEnvironment();
@@ -92,12 +104,11 @@ export class Engine {
     sunLight.position.set(-9000, 8500, -5000);
     sunLight.castShadow = true;
     sunLight.shadow.mapSize.set(2048, 2048);
-    
-    sunLight.shadow.camera.left = -20000;
-    sunLight.shadow.camera.right = 20000;
-    sunLight.shadow.camera.top = 20000;
+    sunLight.shadow.camera.left   = -20000;
+    sunLight.shadow.camera.right  =  20000;
+    sunLight.shadow.camera.top    =  20000;
     sunLight.shadow.camera.bottom = -20000;
-    sunLight.shadow.camera.far = 50000;
+    sunLight.shadow.camera.far    =  50000;
     this.scene.add(sunLight);
 
     const hemi = new THREE.HemisphereLight(0xe7f3ff, 0x97886a, 1.0);
@@ -120,16 +131,13 @@ export class Engine {
 
   private animate = (): void => {
     this.animationFrameId = window.requestAnimationFrame(this.animate);
-    
+
     const delta = this.clock.getDelta();
 
-    if (this.cockpit) {
-      this.cockpit.update(delta); 
-    }
+    if (this.cockpit)           this.cockpit.update(delta);
+    if (this.world)             this.world.update(delta);
 
-    if (this.world) {
-      this.world.update(delta);
-    }
+    this.projectileManager.update(delta);
 
     this.renderer.render(this.scene, this.camera);
   };
@@ -137,13 +145,15 @@ export class Engine {
   public destroy(): void {
     window.cancelAnimationFrame(this.animationFrameId);
     window.removeEventListener('resize', this.onWindowResize);
-    
-    if (this.world) this.world.dispose();
-    if (this.mobileControls) this.mobileControls.destroy();
-    
+
+    if (this.world)                       this.world.dispose();
+    if (this.mobileControls)              this.mobileControls.destroy();
+    if (this.cockpit.weaponSystem)        this.cockpit.weaponSystem.dispose();
+    if (this.projectileManager)           this.projectileManager.dispose();
+
     this.renderer.dispose();
     this.container.remove();
-    console.log("Engine Destroyed safely.");
+    console.log('Engine Destroyed safely.');
   }
 
   public onReady(callback: () => void): void {
