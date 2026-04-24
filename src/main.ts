@@ -2,37 +2,26 @@ import { LoadingScene } from './scenes/LoadingScene';
 import { MainMenuScene } from './scenes/MainMenuScene';
 import { NarrativeScene } from './scenes/NarrativeScene';
 import { Engine } from './scenes/game/Engine';
+import { OrientationGuard } from './utils/OrientationGuard';
 
-// const loading = new LoadingScene(document.body);
+const orientationGuard = new OrientationGuard();
 
-// let progress = 0;
-// const interval = setInterval(() => {
-//   progress += Math.random() * 3 + 1;
+const loading = new LoadingScene(document.body);
 
-//   if (progress >= 100) {
-//     progress = 100;
-//     clearInterval(interval);
-//     loading.updateProgress(100);
-//     setTimeout(() => loading.hide(), 600);
-//     return;
-//   }
+// ابدأ الـ Engine فوراً — هو اللي هيحمل كل حاجة ويبعت الـ progress الحقيقي
+const gameEngine = new Engine(loading);
 
-//   loading.updateProgress(progress);
-// }, 120);
+// لما التحميل يخلص — اعرض المنيو
+gameEngine.onReady(() => {
+  const menu = new MainMenuScene(document.body);
+  menu.show();
 
-// loading.onComplete(() => {
-//   const menu = new MainMenuScene(document.body);
-//   menu.show();
+  menu.onStart(() => {
+    const narrative = new NarrativeScene(document.body);
+    narrative.show();
 
-//   menu.onStart(() => {
-//     const narrative = new NarrativeScene(document.body);
-//     narrative.show();
-
-//     narrative.onComplete(() => {
-//       console.log('اللعبة بدأت!');
-
-      const gameEngine = new Engine();
+    narrative.onComplete(() => {
       gameEngine.init();
-//     });
-//   });
-// });
+    });
+  });
+});

@@ -17,11 +17,8 @@ export class NarrativeScene {
   private actions: THREE.AnimationAction[] = [];
   private mixerPaused = false;
 
-  private readonly pages: string[] = [
-    "معركة المنصورة الجوية: هي معركة جوية وقعت في 14 أكتوبر 1973 في طنطا والمنصورة والصالحية. وكانت أكبر هجوم جوي تشنه إسرائيل بقوة قُدرت بحوالي 120 طائرة إسرائيلية.",
-    "وقد انتهت المعركة بالنصر للقوات المصرية بعد أطول وأكبر معركة جوية استمرت 53 دقيقة. وكانت هذه المعركة علامة فارقة في تاريخ سلاح الجو المصري.",
-  ];
-  private currentPage = 0;
+  private readonly text = "معركة المنصورة الجوية: هي معركة جوية وقعت في 14 أكتوبر 1973 في طنطا والمنصورة والصالحية. وكانت أكبر هجوم جوي تشنه إسرائيل بقوة قُدرت بحوالي 120 طائرة إسرائيلية وقد انتهت بالنصر للقوات المصرية بعد أطول وأكبر معركة جوية استمرت 53 دقيقة.";
+
   private typingInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(private container: HTMLElement) {
@@ -31,12 +28,7 @@ export class NarrativeScene {
 
   private initScene() {
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(
-      75,
-      window.innerWidth / window.innerHeight,
-      0.1,
-      1000
-    );
+    this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
     this.camera.position.set(0, 0, 4);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -49,9 +41,7 @@ export class NarrativeScene {
     this.renderer.domElement.style.zIndex = "1";
     this.renderer.domElement.style.pointerEvents = "none";
 
-    const scrollArea = this.overlay.querySelector(
-      "#ns-scroll-area"
-    ) as HTMLElement;
+    const scrollArea = this.overlay.querySelector("#ns-scroll-area") as HTMLElement;
     scrollArea.appendChild(this.renderer.domElement);
 
     this.addLights();
@@ -76,77 +66,36 @@ export class NarrativeScene {
 
   private loadScrollModel() {
     const loader = new GLTFLoader();
-    loader.load(
-      "/models/paperScrollDone.glb",
-      (gltf: GLTF) => {
-        const scrollMesh = gltf.scene;
-        this.scrollMesh = scrollMesh;
-        scrollMesh.rotation.x = Math.PI / 2;
-        scrollMesh.rotation.y = Math.PI;
-        scrollMesh.scale.set(1.6, 1.2, 1.2);
-        this.scene.add(scrollMesh);
+    loader.load("/models/paperScrollDone.glb", (gltf: GLTF) => {
+      this.scrollMesh = gltf.scene;
+      this.scrollMesh.rotation.x = Math.PI / 2;
+      this.scrollMesh.rotation.y = Math.PI;
+      this.scrollMesh.scale.set(1.6, 1.2, 1.2);
+      this.scene.add(this.scrollMesh);
 
-        this.gltfAnimations = gltf.animations;
-        this.mixer = new THREE.AnimationMixer(scrollMesh);
+      this.gltfAnimations = gltf.animations;
+      this.mixer = new THREE.AnimationMixer(this.scrollMesh);
+      this.actions = this.gltfAnimations.map((clip) => {
+        const action = this.mixer!.clipAction(clip);
+        action.setLoop(THREE.LoopOnce, 1);
+        action.clampWhenFinished = true;
+        return action;
+      });
 
-        this.actions = this.gltfAnimations.map((clip) => {
-          const action = this.mixer!.clipAction(clip);
-          action.setLoop(THREE.LoopOnce, 1);
-          action.clampWhenFinished = true;
-          action.timeScale = 1;
-          return action;
-        });
-
-        this.modelReady = true;
-
-        if (this.pendingShow) {
-          this.pendingShow = false;
-          this._playAndType();
-        }
-      },
-      undefined,
-      (error: unknown) => console.error("Error loading model:", error)
-    );
+      this.modelReady = true;
+      if (this.pendingShow) {
+        this.pendingShow = false;
+        this._playAndType();
+      }
+    });
   }
 
   private playOpenAnimations() {
     if (!this.mixer || this.actions.length === 0) return;
-
     this.mixerPaused = false;
     this.mixer.stopAllAction();
-
-    this.actions.forEach((action) => {
-      action.reset();
-      action.setLoop(THREE.LoopOnce, 1);
-      action.clampWhenFinished = true;
-      action.timeScale = 1;
-      action.play();
-    });
-
-    setTimeout(() => {
-      this.mixerPaused = true;
-    }, 4000);
-  }
-
-  public close(): void {
-    if (!this.mixer || this.actions.length === 0) return;
-
-    this.mixerPaused = false;
-    this.mixer.stopAllAction();
-
-    this.actions.forEach((action) => {
-      const clip = action.getClip();
-      action.reset();
-      action.setLoop(THREE.LoopOnce, 1);
-      action.clampWhenFinished = true;
-      action.timeScale = -1;
-      action.time = clip.duration;
-      action.play();
-    });
-
-    setTimeout(() => {
-      this.mixerPaused = true;
-    }, 1800);
+    this.actions.forEach((action) => action.reset().play());
+    setTimeout(() => { this.mixerPaused = true; }, 4000);
   }
 
   private createOverlay(): HTMLElement {
@@ -161,14 +110,12 @@ export class NarrativeScene {
           inset: 0;
           z-index: 9999;
           display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
           opacity: 0;
-          transition: opacity 1s ease;
+          transition: opacity 1s;
           pointer-events: none;
+          justify-content: center;
+          align-items: center;
         }
-
         #narrative-screen.visible {
           opacity: 1;
           pointer-events: all;
@@ -179,148 +126,140 @@ export class NarrativeScene {
           inset: 0;
           background-image: url('/images/main-menu-bg.png');
           background-size: cover;
-          background-position: center;
           z-index: 0;
         }
-
         #ns-bg-overlay {
           position: absolute;
           inset: 0;
-          background: rgba(0, 0, 0, 0.55);
+          background: rgba(0,0,0,0.55);
           z-index: 1;
         }
 
         #ns-scroll-area {
           position: relative;
           z-index: 2;
-          display: flex;
-          align-items: center;
-          justify-content: center;
           width: 100%;
           height: 100%;
-          pointer-events: none;
-        }
-
-        #ns-text-container {
-          position: absolute;
-          /* Extreme margins to force text into a narrow central column */
-          top: 25%;
-          bottom: 25%;
-          left: 30%;
-          right: 30%;
-          
-          /* Strictly limit the width to 40% of the screen */
-          width: 40%;
-          max-width: 40vw;
-          margin: 0 auto;
-
-          text-align: center;
-          font-family: 'Amiri', serif;
-          color: #2b1b0a;
-          text-shadow: 0.5px 0.5px 1px rgba(0,0,0,0.1);
-          
-          direction: rtl;
-          /* Even more conservative font sizing for safety */
-          font-size: clamp(0.9rem, 1.8vw, 1.2rem);
-          font-weight: 700;
-          line-height: 1.5;
-
           display: flex;
-          flex-direction: column;
           justify-content: center;
           align-items: center;
+        }
+
+        /*
+          الحاوية الرئيسية — بتتمركز فوق اللفافة بالظبط
+          min-height بدل height عشان الكلام ميتقطعش
+        */
+        #ns-text-container {
+          position: absolute;
+
+          /* التمركز الأفقي */
+          left: 50%;
+          transform: translateX(-50%);
+
+          /*
+            top بيتحكم في ارتفاع الكلام على اللفافة
+            clamp: موبايل=28% ← لاب=32% ← شاشة كبيرة=35%
+          */
+          top: clamp(28%, 5vw + 20%, 35%);
+
+          /*
+            العرض مرتبط بالـ viewport
+            موبايل: 55vw ← لاب: 32vw ← شاشة كبيرة: 28vw
+          */
+          width: clamp(220px, 32vw, 520px);
+
+          min-height: 10px;
+
+          /* النص */
+          font-family: 'Amiri', serif;
+          font-weight: 700;
+          color: #2b1b0a;
+          direction: rtl;
+          text-align: right;
+
+          /*
+            حجم الخط:
+            موبايل (360px wide)  → ~0.75rem  ≈ 12px
+            لاب    (1440px wide) → ~1.1rem   ≈ 17px
+            شاشة كبيرة          → max 1.3rem ≈ 21px
+          */
+          font-size: clamp(0.62rem, 1.7vw, 6rem);
+
+          /*
+            تباعد السطور — أكبر من الافتراضي عشان الخط العربي يتنفس
+          */
+          line-height: 2.5;
 
           overflow: hidden;
-          white-space: pre-wrap; 
-          word-break: normal;
-          overflow-wrap: break-word;
-
-          padding: 10px 15px;
           z-index: 10;
           pointer-events: none;
-          box-sizing: border-box;
         }
 
         #ns-text-content {
-           width: 100%;
-           max-height: 100%;
+          display: block;
+          width: 100%;
+          white-space: pre-wrap;
+          word-break: break-word;
         }
 
-        #ns-next-btn {
+        /* زر تخطي / ابدأ */
+        #ns-action-btn {
           position: absolute;
-          bottom: 18%;
+          bottom: 14%;
           left: 50%;
           transform: translateX(-50%);
           z-index: 20;
-
           font-family: 'Amiri', serif;
-          font-size: 1.1rem;
+          font-size: clamp(0.85rem, 1.2vw, 1.1rem);
           color: #2b1b0a;
-          background: rgba(205, 170, 100, 0.35);
+          background: rgba(205,170,100,0.4);
           border: 2px solid #8b6914;
           border-radius: 8px;
-          padding: 8px 32px;
+          padding: 8px 30px;
           cursor: pointer;
-          letter-spacing: 0.05em;
-          transition: background 0.2s, transform 0.15s;
+          transition: all 0.2s;
           display: none;
           pointer-events: all;
-          direction: rtl;
+          white-space: nowrap;
         }
-
-        #ns-next-btn:hover {
-          background: rgba(205, 170, 100, 0.65);
+        #ns-action-btn:hover {
+          background: rgba(205,170,100,0.7);
           transform: translateX(-50%) scale(1.05);
         }
 
-        #ns-page-indicator {
-          position: absolute;
-          bottom: 13%;
-          left: 50%;
-          transform: translateX(-50%);
-          z-index: 20;
-          display: flex;
-          gap: 8px;
-          pointer-events: none;
-        }
-
-        .ns-dot {
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-          background: #8b6914;
-          opacity: 0.3;
-          transition: opacity 0.3s;
-        }
-
-        .ns-dot.active {
-          opacity: 1;
+        /* موبايل — اللفافة بتبقى أصغر فالكلام محتاج يتضبط */
+        @media (max-width: 768px) {
+          #ns-text-container {
+            top: clamp(25%, 8vw + 15%, 32%);
+            width: clamp(160px, 52vw, 300px);
+            font-size: clamp(0.6rem, 2.2vw, 0.85rem);
+            line-height: 1.9;
+          }
+          #ns-action-btn {
+            bottom: 10%;
+            font-size: clamp(0.75rem, 3vw, 0.95rem);
+            padding: 6px 22px;
+          }
         }
       </style>
+
       <div id="ns-bg"></div>
       <div id="ns-bg-overlay"></div>
-
       <div id="ns-scroll-area">
         <div id="ns-text-container">
-          <div id="ns-text-content"></div>
+          <span id="ns-text-content"></span>
         </div>
-        <button id="ns-next-btn">التالي ›</button>
-        <div id="ns-page-indicator">
-          <div class="ns-dot active"></div>
-          <div class="ns-dot"></div>
-        </div>
+        <button id="ns-action-btn">تخطي</button>
       </div>
     `;
-
     this.container.appendChild(el);
     return el;
   }
 
   public show(): void {
     this.overlay.classList.add("visible");
-
     if (this.modelReady) {
-      setTimeout(() => this._playAndType(), 0);
+      this._playAndType();
     } else {
       this.pendingShow = true;
     }
@@ -332,106 +271,44 @@ export class NarrativeScene {
   }
 
   private _startTyping() {
-    this.currentPage = 0;
-    this._typeCurrentPage();
-  }
-
-  private _typeCurrentPage() {
-    const container = this.overlay.querySelector("#ns-text-container") as HTMLElement;
     const content = this.overlay.querySelector("#ns-text-content") as HTMLElement;
-    const nextBtn = this.overlay.querySelector("#ns-next-btn") as HTMLButtonElement;
-    const dots = this.overlay.querySelectorAll(".ns-dot");
-    if (!content || !container) return;
+    const btn = this.overlay.querySelector("#ns-action-btn") as HTMLButtonElement;
+    if (!content || !btn) return;
 
-    // Clear previous state
-    if (this.typingInterval) clearInterval(this.typingInterval);
-    nextBtn.style.display = "none";
     content.textContent = "";
+    btn.style.display = "block";
+    btn.textContent = "تخطي ›";
 
-    // Update page dots
-    dots.forEach((d, i) => {
-      d.classList.toggle("active", i === this.currentPage);
-    });
+    btn.onclick = () => {
+      if (this.typingInterval) clearInterval(this.typingInterval);
+      content.textContent = this.text;
+      this._switchToStartMode(btn);
+    };
 
-    const pageText = this.pages[this.currentPage];
     let i = 0;
-
     this.typingInterval = setInterval(() => {
-      if (i < pageText.length) {
-        content.textContent += pageText[i];
+      if (i < this.text.length) {
+        content.textContent += this.text[i];
         i++;
-
-        // Strict vertical overflow check
-        if (content.scrollHeight > container.clientHeight) {
-          content.textContent = content.textContent.slice(0, -1);
-          clearInterval(this.typingInterval!);
-          this.typingInterval = null;
-          this._handlePageEnd(nextBtn);
-        }
       } else {
         clearInterval(this.typingInterval!);
-        this.typingInterval = null;
-        this._handlePageEnd(nextBtn);
+        this._switchToStartMode(btn);
       }
-    }, 60);
+    }, 45);
   }
 
-  private _handlePageEnd(nextBtn: HTMLButtonElement) {
-    const content = this.overlay.querySelector("#ns-text-content") as HTMLElement;
-    const isLastPage = this.currentPage === this.pages.length - 1;
-
-    if (!isLastPage) {
-      nextBtn.style.display = "block";
-      nextBtn.textContent = "التالي ›";
-      nextBtn.onclick = () => {
-        nextBtn.style.display = "none";
-        // Clear text content before starting transition
-        if (content) content.textContent = "";
-        this.currentPage++;
-        this._closeAndReopenScroll(() => this._typeCurrentPage());
-      };
-    } else {
-      // Show "ابدأ" button on the last page
-      nextBtn.style.display = "block";
-      nextBtn.textContent = "ابدأ";
-      nextBtn.onclick = () => {
-        nextBtn.style.display = "none";
-        this.hide();
-        if (this.onCompleteCallback) this.onCompleteCallback();
-      };
-    }
-  }
-
-  private _closeAndReopenScroll(onDone: () => void) {
-    // Play close animation
-    if (this.mixer && this.actions.length > 0) {
-      this.mixerPaused = false;
-      this.mixer.stopAllAction();
-      this.actions.forEach((action) => {
-        const clip = action.getClip();
-        action.reset();
-        action.setLoop(THREE.LoopOnce, 1);
-        action.clampWhenFinished = true;
-        action.timeScale = -1;
-        action.time = clip.duration;
-        action.play();
-      });
-    }
-
-    // After close, re-open and type next page
-    setTimeout(() => {
-      this.mixerPaused = true;
-      this.playOpenAnimations();
-      setTimeout(() => onDone(), 4000);
-    }, 1800);
+  private _switchToStartMode(btn: HTMLButtonElement) {
+    btn.textContent = "ابدأ المعركة";
+    btn.style.fontWeight = "bold";
+    btn.onclick = () => {
+      this.destroy();
+      if (this.onCompleteCallback) this.onCompleteCallback();
+    };
   }
 
   private animate = () => {
     requestAnimationFrame(this.animate);
-    const delta = this.clock.getDelta();
-    if (this.mixer && !this.mixerPaused) {
-      this.mixer.update(delta);
-    }
+    if (this.mixer && !this.mixerPaused) this.mixer.update(this.clock.getDelta());
     this.renderer.render(this.scene, this.camera);
   };
 
@@ -439,19 +316,10 @@ export class NarrativeScene {
     this.onCompleteCallback = callback;
   }
 
-  public hide(): void {
-    this.destroy();
-  }
-
   public destroy() {
-    if (this.typingInterval) {
-      clearInterval(this.typingInterval);
-      this.typingInterval = null;
-    }
-
+    if (this.typingInterval) clearInterval(this.typingInterval);
     window.removeEventListener("resize", this.onResize);
     this.renderer.dispose();
-    this.renderer.domElement.remove();
     this.overlay.remove();
   }
 }

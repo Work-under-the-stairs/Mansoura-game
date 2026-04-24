@@ -3,8 +3,11 @@ import { World } from './World';
 import { Cockpit } from './Cockpit';
 import { Controls } from './Controls';
 import { MobileControls } from './MobileControls';
+import { LoadingScene } from '../LoadingScene';
 
 export class Engine {
+  private loadingScene: LoadingScene;
+  private loadingManager: THREE.LoadingManager;
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
   private renderer: THREE.WebGLRenderer;
@@ -16,7 +19,11 @@ export class Engine {
   private animationFrameId = 0;
   private mobileControls: MobileControls;
 
-  constructor() {
+  constructor(loadingScene: LoadingScene) {
+    this.loadingScene = loadingScene;
+    this.loadingManager = new THREE.LoadingManager();
+    this.loadingScene.attachToLoadingManager(this.loadingManager);
+
     this.scene = new THREE.Scene();
 
     this.camera = new THREE.PerspectiveCamera(
@@ -36,7 +43,7 @@ export class Engine {
     this.container.style.position = 'fixed';
     this.container.style.inset = '0';
     this.container.style.zIndex = '5';
-    this.container.style.background = 'linear-gradient(180deg, #88bbed 0%, #d9ecff 55%, #ede2c9 100%)';
+    // this.container.style.background = 'linear-gradient(180deg, #88bbed 0%, #d9ecff 55%, #ede2c9 100%)';
     document.body.appendChild(this.container);
 
     this.renderer = new THREE.WebGLRenderer({
@@ -58,6 +65,7 @@ export class Engine {
 
     this.world = new World(
       this.scene,
+      this.loadingManager,
       {
         skyExrUrl: '/images/qwantani_afternoon_2k.exr',
         terrainSize: 42000,
@@ -68,7 +76,7 @@ export class Engine {
       this.renderer,
     );
 
-    this.cockpit = new Cockpit(this.scene, this.camera, this.controls);
+    this.cockpit = new Cockpit(this.scene, this.camera, this.controls, this.loadingManager);
 
     this.setupLights();
     this.createEnvironment();
@@ -136,5 +144,9 @@ export class Engine {
     this.renderer.dispose();
     this.container.remove();
     console.log("Engine Destroyed safely.");
+  }
+
+  public onReady(callback: () => void): void {
+    this.loadingScene.onComplete(callback);
   }
 }

@@ -15,8 +15,9 @@ export class World {
   private fillLight!: THREE.HemisphereLight;
   private renderer: THREE.WebGLRenderer | null = null;
 
-  constructor(scene: THREE.Scene, options: Partial<WorldOptions> = {}, renderer?: THREE.WebGLRenderer) {
+  constructor(scene: THREE.Scene, loadingManager: THREE.LoadingManager, options: Partial<WorldOptions> = {}, renderer?: THREE.WebGLRenderer) {
     this.scene = scene;
+    this.loadingManager = loadingManager;
     this.options = options;
     this.renderer = renderer ?? null;
 
@@ -28,7 +29,7 @@ export class World {
     const url = this.options.skyExrUrl;
     if (!url || !this.renderer) return;
 
-    const loader = new EXRLoader();
+    const loader = new EXRLoader(this.loadingManager);
     loader.setDataType(THREE.FloatType);
 
     loader.load(url, (texture) => {
