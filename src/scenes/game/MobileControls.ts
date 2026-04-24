@@ -23,14 +23,13 @@ export class MobileControls {
 
     if (this.isMobile) {
       this.injectStyles();
-      this.createOrientationOverlay();
       this.createControls();
       this.lockLandscape();
     }
   }
 
   private detectMobile(): boolean {
-    // return true // just to test mobile controls on desktop, remove this line for real detection
+    return true // just to test mobile controls on desktop, remove this line for real detection
     return (
       /Android|iPhone|iPad|iPod|Touch/i.test(navigator.userAgent) ||
       navigator.maxTouchPoints > 1 ||
@@ -174,29 +173,6 @@ export class MobileControls {
     document.head.appendChild(style);
   }
 
-  private createOrientationOverlay(): void {
-    const overlay = document.createElement('div');
-    overlay.id = 'mobile-orientation-overlay';
-    overlay.innerHTML = `
-      <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-        <rect x="6" y="8" width="28" height="36" rx="4" stroke="white" stroke-width="2.5"/>
-        <rect x="14" y="4" width="36" height="28" rx="4" stroke="rgba(255,255,255,0.4)" stroke-width="2"/>
-      </svg>
-      <p>Rotate device to play</p>
-    `;
-    document.body.appendChild(overlay);
-
-    const checkOrientation = () => {
-      const isPortrait =
-        window.innerHeight > window.innerWidth ||
-        (screen.orientation?.type ?? '').includes('portrait');
-      overlay.classList.toggle('visible', isPortrait);
-    };
-
-    window.addEventListener('resize', checkOrientation);
-    window.addEventListener('orientationchange', checkOrientation);
-    checkOrientation();
-  }
 
   private createControls(): void {
     const wrapper = document.createElement('div');

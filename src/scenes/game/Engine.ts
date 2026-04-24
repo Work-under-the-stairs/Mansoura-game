@@ -4,8 +4,11 @@ import { Cockpit } from './Cockpit';
 import { Controls } from './Controls';
 import { MobileControls } from './MobileControls';
 import { EnemyManager } from './EnemyManager';
+import { LoadingScene } from '../LoadingScene';
 
 export class Engine {
+  private loadingScene: LoadingScene;
+  private loadingManager: THREE.LoadingManager;
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
   private renderer: THREE.WebGLRenderer;
@@ -19,7 +22,11 @@ export class Engine {
   private animationFrameId = 0;
   private mobileControls: MobileControls;
 
-  constructor() {
+  constructor(loadingScene: LoadingScene) {
+    this.loadingScene = loadingScene;
+    this.loadingManager = new THREE.LoadingManager();
+    this.loadingScene.attachToLoadingManager(this.loadingManager);
+
     this.scene = new THREE.Scene();
 
     this.camera = new THREE.PerspectiveCamera(
@@ -41,7 +48,6 @@ export class Engine {
     this.container.style.zIndex = '5';
     this.container.style.background =
       'linear-gradient(180deg, #88bbed 0%, #d9ecff 55%, #ede2c9 100%)';
-
     document.body.appendChild(this.container);
 
     this.renderer = new THREE.WebGLRenderer({
@@ -66,13 +72,18 @@ export class Engine {
 
     this.world = new World(
       this.scene,
-      { skyExrUrl: '/images/qwantani_afternoon_2k.exr' },
+      this.loadingManager,
+      {
+        skyExrUrl: '/images/qwantani_afternoon_2k.exr',
+        terrainSize: 42000,
+        terrainSegments: 420,
+        riverWidth: 420,
+        cloudCount: 10,
+      },
       this.renderer,
     );
 
-    // ✈️ Cockpit first
-    this.cockpit = new Cockpit(this.scene, this.camera, this.controls);
-
+    this.cockpit = new Cockpit(this.scene, this.camera, this.controls, this.loadingManager);
     // 👾 Enemies — receives cockpit reference for accurate world position & forward
     this.enemies = new EnemyManager(this.scene, this.camera, this.cockpit);
 
@@ -80,7 +91,36 @@ export class Engine {
     this.createEnvironment();
 
     window.addEventListener('resize', this.onWindowResize);
+
+    // 👇 Hide everything immediately — assets load silently in background
+    this.hide();
   }
+
+  // =====================
+  //  Visibility controls
+  // =====================
+
+  public hide(): void {
+    this.container.style.visibility = 'hidden';
+    this.container.style.pointerEvents = 'none';
+
+    // Also hide mobile controls if they were injected
+    const mobileControls = document.getElementById('mobile-controls');
+    if (mobileControls) mobileControls.style.display = 'none';
+  }
+
+  public show(): void {
+    this.container.style.visibility = 'visible';
+    this.container.style.pointerEvents = 'auto';
+
+    // Restore mobile controls
+    const mobileControls = document.getElementById('mobile-controls');
+    if (mobileControls) mobileControls.style.display = '';
+  }
+
+  // =====================
+  //  Lights & environment
+  // =====================
 
   private setupLights(): void {
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
@@ -106,6 +146,10 @@ export class Engine {
   private createEnvironment(): void {
     this.scene.fog = new THREE.Fog(0xcad9e6, 9000, 52000);
   }
+
+  // =====================
+  //  Lifecycle
+  // =====================
 
   public init(): void {
     this.animate();
@@ -140,5 +184,9 @@ export class Engine {
     this.container.remove();
 
     console.log('Engine Destroyed safely.');
+  }
+
+  public onReady(callback: () => void): void {
+    this.loadingScene.onComplete(callback);
   }
 }

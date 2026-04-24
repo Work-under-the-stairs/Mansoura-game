@@ -25,16 +25,17 @@ export class Cockpit {
     constructor(
         private scene: THREE.Scene, 
         private camera: THREE.PerspectiveCamera, 
-        private controls: Controls
+        private controls: Controls,
+        private loadingManager: THREE.LoadingManager
     ) {
         this.loadModel();
     }
 
     private loadModel() {
-        const loader = new GLTFLoader();
+        const loader = new GLTFLoader(this.loadingManager);
 
         const dracoLoader = new DRACOLoader();
-        dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
+        dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/'); 
         loader.setDRACOLoader(dracoLoader);
         
         loader.load('/models/cockpitNew.glb', (gltf) => {
