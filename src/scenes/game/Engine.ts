@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { World } from './World';
 import { Cockpit } from './Cockpit';
 import { Controls } from './Controls';
+import { MobileControls } from './MobileControls';
 
 export class Engine {
   private scene: THREE.Scene;
@@ -13,6 +14,7 @@ export class Engine {
   private container: HTMLDivElement;
   private clock = new THREE.Clock();
   private animationFrameId = 0;
+  private mobileControls: MobileControls;
 
   constructor() {
     this.scene = new THREE.Scene();
@@ -58,6 +60,8 @@ export class Engine {
       cloudCount: 10,
     });
     this.cockpit = new Cockpit(this.scene, this.camera, this.controls);
+
+    this.mobileControls = new MobileControls(this.container, this.controls);
 
     this.setupLights();
     this.createEnvironment();
@@ -119,5 +123,6 @@ export class Engine {
 
     this.renderer.dispose();
     this.container.remove();
+    this.mobileControls.destroy();
   }
 }

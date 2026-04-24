@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader';
 import { Controls } from './Controls';
 
 export class Cockpit {
@@ -31,8 +32,12 @@ export class Cockpit {
 
     private loadModel() {
         const loader = new GLTFLoader();
+
+        const dracoLoader = new DRACOLoader();
+        dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/'); 
+        loader.setDRACOLoader(dracoLoader);
         
-        loader.load('/models/myCockpit.glb', (gltf) => {
+        loader.load('/models/cockpitNew.glb', (gltf) => {
             this.model = gltf.scene;
             this.scene.add(this.model);
             
