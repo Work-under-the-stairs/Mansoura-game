@@ -3,6 +3,7 @@ import { World } from './World';
 import { Cockpit } from './Cockpit';
 import { Controls } from './Controls';
 import { MobileControls } from './MobileControls';
+import { EnemyManager } from './EnemyManager';
 
 export class Engine {
   private scene: THREE.Scene;
@@ -11,6 +12,8 @@ export class Engine {
   private cockpit: Cockpit;
   private controls: Controls;
   private world: World;
+  private enemies: EnemyManager;
+
   private container: HTMLDivElement;
   private clock = new THREE.Clock();
   private animationFrameId = 0;
@@ -36,7 +39,9 @@ export class Engine {
     this.container.style.position = 'fixed';
     this.container.style.inset = '0';
     this.container.style.zIndex = '5';
-    this.container.style.background = 'linear-gradient(180deg, #88bbed 0%, #d9ecff 55%, #ede2c9 100%)';
+    this.container.style.background =
+      'linear-gradient(180deg, #88bbed 0%, #d9ecff 55%, #ede2c9 100%)';
+
     document.body.appendChild(this.container);
 
     this.renderer = new THREE.WebGLRenderer({
@@ -44,13 +49,16 @@ export class Engine {
       powerPreference: 'high-performance',
       logarithmicDepthBuffer: true,
     });
+
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; 
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
     this.container.appendChild(this.renderer.domElement);
 
     this.controls = new Controls();
@@ -58,17 +66,15 @@ export class Engine {
 
     this.world = new World(
       this.scene,
-      {
-        skyExrUrl: '/images/qwantani_afternoon_2k.exr',
-        terrainSize: 42000,
-        terrainSegments: 420,
-        riverWidth: 420,
-        cloudCount: 10,
-      },
+      { skyExrUrl: '/images/qwantani_afternoon_2k.exr' },
       this.renderer,
     );
 
+    // ✈️ Cockpit first
     this.cockpit = new Cockpit(this.scene, this.camera, this.controls);
+
+    // 👾 Enemies — receives cockpit reference for accurate world position & forward
+    this.enemies = new EnemyManager(this.scene, this.camera, this.cockpit);
 
     this.setupLights();
     this.createEnvironment();
@@ -83,13 +89,14 @@ export class Engine {
     const sunLight = new THREE.DirectionalLight(0xfff3d0, 3.5);
     sunLight.position.set(-9000, 8500, -5000);
     sunLight.castShadow = true;
+
     sunLight.shadow.mapSize.set(2048, 2048);
-    
-    sunLight.shadow.camera.left = -20000;
-    sunLight.shadow.camera.right = 20000;
-    sunLight.shadow.camera.top = 20000;
+    sunLight.shadow.camera.left   = -20000;
+    sunLight.shadow.camera.right  =  20000;
+    sunLight.shadow.camera.top    =  20000;
     sunLight.shadow.camera.bottom = -20000;
-    sunLight.shadow.camera.far = 50000;
+    sunLight.shadow.camera.far    =  50000;
+
     this.scene.add(sunLight);
 
     const hemi = new THREE.HemisphereLight(0xe7f3ff, 0x97886a, 1.0);
@@ -112,16 +119,12 @@ export class Engine {
 
   private animate = (): void => {
     this.animationFrameId = window.requestAnimationFrame(this.animate);
-    
+
     const delta = this.clock.getDelta();
 
-    if (this.cockpit) {
-      this.cockpit.update(delta); 
-    }
-
-    if (this.world) {
-      this.world.update(delta);
-    }
+    if (this.cockpit) this.cockpit.update(delta);
+    if (this.world)   this.world.update(delta);
+    if (this.enemies) this.enemies.update(delta);
 
     this.renderer.render(this.scene, this.camera);
   };
@@ -129,12 +132,13 @@ export class Engine {
   public destroy(): void {
     window.cancelAnimationFrame(this.animationFrameId);
     window.removeEventListener('resize', this.onWindowResize);
-    
-    if (this.world) this.world.dispose();
+
+    if (this.world)          this.world.dispose();
     if (this.mobileControls) this.mobileControls.destroy();
-    
+
     this.renderer.dispose();
     this.container.remove();
-    console.log("Engine Destroyed safely.");
+
+    console.log('Engine Destroyed safely.');
   }
 }
