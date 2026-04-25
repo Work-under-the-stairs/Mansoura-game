@@ -37,6 +37,7 @@ export class Cockpit {
 
         const dracoLoader = new DRACOLoader(this.loadingManager);
         dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
+
         loader.setDRACOLoader(dracoLoader);
 
         loader.load('/models/cockpitNew.glb', (gltf) => {
@@ -46,6 +47,7 @@ export class Cockpit {
             // this.model.position.set(450, 1450, 6200);
 
             // Attach camera
+
             this.model.add(this.camera);
             // this.camera.position.set(0, 0.165, -0.276);
             // this.camera.lookAt(0, 0, 0.276);
@@ -57,6 +59,7 @@ export class Cockpit {
             const dashLight = new THREE.SpotLight(0xffffff, 1);
             dashLight.position.set(0, 0.5, -0.5);
             dashLight.angle    = Math.PI / 3;
+
             dashLight.penumbra = 0.3;
             dashLight.decay    = 1.5;
             dashLight.distance = 5;
@@ -100,19 +103,43 @@ export class Cockpit {
         });
     }
 
+
+    // ✅ Returns cockpit's actual forward direction in world space (flat XZ)
+    // public getWorldForward(): THREE.Vector3 {
+    //     if (!this.model) return new THREE.Vector3(0, 0, -1);
+
+    //     this.model.updateWorldMatrix(true, false);
+    //     const forward = new THREE.Vector3();
+    //     // Column 2 = local Z in world space, negate because Three.js -Z is forward
+    //     forward.setFromMatrixColumn(this.model.matrixWorld, 2).negate();
+    //     forward.y = 0;
+    //     forward.normalize();
+    //     return forward;
+    // }
+
+    // // ✅ Returns cockpit's actual world position
+    // public getWorldPosition(): THREE.Vector3 {
+    //     const pos = new THREE.Vector3();
+    //     if (this.model) {
+    //         this.model.getWorldPosition(pos);
+    //     } else {
+    //         pos.set(450, 1450, 6200); // fallback before model loads
+    //     }
+    //     return pos;
+    // }
+
     public update(delta: number): void {
+    // public update() {
         if (!this.model) return;
 
         const keys = this.controls.keys;
-        
-        // 1. Throttle
+
         if (keys['ShiftLeft'] || keys['ShiftRight']) {
             this.currentSpeed = THREE.MathUtils.lerp(this.currentSpeed, this.config.maxSpeed, this.config.acceleration);
         } else {
             this.currentSpeed = THREE.MathUtils.lerp(this.currentSpeed, this.config.minSpeed, this.config.acceleration * 0.5);
         }
 
-        // 2. Pitch
         if (keys['ArrowUp']) {
             this.rotationSpeed.pitch = Math.max(this.rotationSpeed.pitch - this.config.sensitivity, -this.config.maxRotationSpeed);
         }
@@ -120,7 +147,6 @@ export class Cockpit {
             this.rotationSpeed.pitch = Math.min(this.rotationSpeed.pitch + this.config.sensitivity, this.config.maxRotationSpeed);
         }
 
-        // 3. Roll
         if (keys['ArrowLeft']) {
             this.rotationSpeed.roll = Math.max(this.rotationSpeed.roll - this.config.sensitivity, -this.config.maxRotationSpeed);
         }
@@ -128,7 +154,6 @@ export class Cockpit {
             this.rotationSpeed.roll = Math.min(this.rotationSpeed.roll + this.config.sensitivity, this.config.maxRotationSpeed);
         }
 
-        // 4. Physics
         this.rotationSpeed.pitch *= this.config.damping;
         this.rotationSpeed.roll  *= this.config.damping;
 

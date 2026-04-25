@@ -205,7 +205,7 @@ export class NarrativeScene {
         /* زر تخطي / ابدأ */
         #ns-action-btn {
           position: absolute;
-          bottom: 14%;
+          bottom: 18%;
           left: 50%;
           transform: translateX(-50%);
           z-index: 20;
@@ -236,7 +236,7 @@ export class NarrativeScene {
             line-height: 1.9;
           }
           #ns-action-btn {
-            bottom: 10%;
+            bottom: 25%;
             font-size: clamp(0.75rem, 3vw, 0.95rem);
             padding: 6px 22px;
           }
