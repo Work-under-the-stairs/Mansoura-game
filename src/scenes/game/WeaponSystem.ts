@@ -7,67 +7,102 @@ import { ProjectileManager } from './ProjectileManager';
 // ─────────────────────────────────────────────
 interface WeaponConfig {
   bulletFireRate:  number;   // rounds / second
-  missileFireRate: number;   // rounds / second (cooldown between shots)
-  maxBullets:      number;   // total ammo
-  maxMissiles:     number;
+  missileFireRate: number;
+  maxBullets:      number;
+  // maxMissiles intentionally removed — missiles are unlimited
 }
 
 const DEFAULT_CONFIG: WeaponConfig = {
-  bulletFireRate:  18,       // ~18 rounds/s  (~machine gun rhythm)
-  missileFireRate: 0.7,      // 1 missile every ~1.4 s
+  bulletFireRate:  18,
+  missileFireRate: 0.7,
   maxBullets:      350,
-  maxMissiles:     8,
 };
 
-// Local-space offsets of gun barrels relative to cockpit model origin
-// Adjust X to spread barrels apart, Z = distance forward
 const GUN_BARRELS: THREE.Vector3[] = [
-  new THREE.Vector3(15, -3, 0),
-  new THREE.Vector3( 16, -3, 0),
-  // new THREE.Vector3(450, 1450, 6200),
-  // new THREE.Vector3(450, 1450, 6200),
+  new THREE.Vector3(20, -5, -50),
+  new THREE.Vector3(21, -5, -50),
 ];
 
-const MISSILE_HARDPOINT = new THREE.Vector3(-15, -3, 0);
+const MISSILE_HARDPOINT = new THREE.Vector3(-20, -5, -50);
 
 // ─────────────────────────────────────────────
-//  Muzzle flash helper (simple sprite)
+//  Muzzle flash — layered for realism
+//
+//  Real muzzle flashes have:
+//    1. A white-hot core (instant, very bright)
+//    2. An orange/yellow primary flash cone (forward biased)
+//    3. A spherical secondary flash (hot gas expanding radially)
 // ─────────────────────────────────────────────
-function makeMuzzleFlash(): THREE.Sprite {
-  const mat = new THREE.SpriteMaterial({
+interface MuzzleFlash {
+  group:     THREE.Group;
+  core:      THREE.Sprite;
+  primary:   THREE.Sprite;
+  secondary: THREE.Sprite;
+}
+
+function makeMuzzleFlash(scene: THREE.Group, barrelPos: THREE.Vector3): MuzzleFlash {
+  const group = new THREE.Group();
+  group.position.copy(barrelPos);
+
+  // 1. Bright white core
+  const core = new THREE.Sprite(new THREE.SpriteMaterial({
+    color:       0xffffff,
+    transparent: true,
+    opacity:     0,
+    blending:    THREE.AdditiveBlending,
+    depthWrite:  false,
+  }));
+  core.scale.set(1.8, 1.8, 1);
+  core.name = 'core';
+  group.add(core);
+
+  // 2. Primary flash cone — slightly forward, elongated in firing direction
+  const primary = new THREE.Sprite(new THREE.SpriteMaterial({
     color:       0xffcc44,
     transparent: true,
     opacity:     0,
     blending:    THREE.AdditiveBlending,
     depthWrite:  false,
-  });
-  const sprite = new THREE.Sprite(mat);
-  sprite.scale.setScalar(3.5);
-  sprite.name = 'muzzleFlash';
-  return sprite;
+  }));
+  primary.scale.set(2.2, 3.8, 1);
+  primary.position.set(0, 0, -1.5);
+  primary.name = 'primary';
+  group.add(primary);
+
+  // 3. Radial secondary flash (hot gas bloom)
+  const secondary = new THREE.Sprite(new THREE.SpriteMaterial({
+    color:       0xff8800,
+    transparent: true,
+    opacity:     0,
+    blending:    THREE.AdditiveBlending,
+    depthWrite:  false,
+  }));
+  secondary.scale.set(5.5, 5.5, 1);
+  secondary.name = 'secondary';
+  group.add(secondary);
+
+  scene.add(group);
+  return { group, core, primary, secondary };
 }
 
 // ─────────────────────────────────────────────
 //  WeaponSystem
 // ─────────────────────────────────────────────
 export class WeaponSystem {
-  // Ammo state
   public bulletsLeft:  number;
-  public missilesLeft: number;
 
-  // Cooldown accumulators (seconds until next allowed shot)
+  // Missiles are unlimited — no counter needed, but expose for HUD compat
+  public readonly missilesLeft = Infinity;
+
   private bulletCooldown  = 0;
   private missileCooldown = 0;
+  private barrelIndex     = 0;
 
-  // Alternates which barrel fires next
-  private barrelIndex = 0;
+  private muzzleFlashes: MuzzleFlash[] = [];
+  private flashTimers:   number[]      = [];
 
-  // Muzzle flashes (one per barrel)
-  private muzzleFlashes: THREE.Sprite[] = [];
-
-  // Flash lifetime
-  private readonly FLASH_DURATION = 0.045;  // s
-  private flashTimers: number[] = [];
+  // Flash lifetime — short; real muzzle flash is < 1 frame at 60 fps
+  private readonly FLASH_DURATION = 0.038;  // s
 
   private config: WeaponConfig;
 
@@ -78,9 +113,8 @@ export class WeaponSystem {
     private projectileManager: ProjectileManager,
     config: Partial<WeaponConfig> = {},
   ) {
-    this.config        = { ...DEFAULT_CONFIG, ...config };
-    this.bulletsLeft   = this.config.maxBullets;
-    this.missilesLeft  = this.config.maxMissiles;
+    this.config      = { ...DEFAULT_CONFIG, ...config };
+    this.bulletsLeft = this.config.maxBullets;
 
     this.initMuzzleFlashes();
   }
@@ -89,10 +123,7 @@ export class WeaponSystem {
 
   private initMuzzleFlashes(): void {
     for (let i = 0; i < GUN_BARRELS.length; i++) {
-      const flash = makeMuzzleFlash();
-      // Attach to cockpit so it moves with it
-      flash.position.copy(GUN_BARRELS[i]);
-      this.cockpitModel.add(flash);
+      const flash = makeMuzzleFlash(this.cockpitModel, GUN_BARRELS[i]);
       this.muzzleFlashes.push(flash);
       this.flashTimers.push(0);
     }
@@ -103,32 +134,22 @@ export class WeaponSystem {
   public update(delta: number): void {
     const keys = this.controls.keys;
 
-    // Tick down cooldowns
     this.bulletCooldown  = Math.max(0, this.bulletCooldown  - delta);
     this.missileCooldown = Math.max(0, this.missileCooldown - delta);
 
-    // Machine gun — KeyZ held
+    // Bullets: limited by bulletsLeft
     if (keys['KeyZ'] && this.bulletsLeft > 0 && this.bulletCooldown <= 0) {
-    // if (keys['KeyZ'] && this.bulletsLeft > 0 && this.bulletCooldown === 0) {
       this.fireBullet();
       this.bulletCooldown = 1 / this.config.bulletFireRate;
     }
 
-    // Missile — KeyX held (one per cooldown)
-    if (keys['KeyX'] && this.missilesLeft > 0 && this.missileCooldown <= 0) {
-    // if (keys['KeyX'] && this.missilesLeft > 0 && this.missileCooldown === 0) {
+    // Missiles: unlimited — only rate-limited
+    if (keys['KeyX'] && this.missileCooldown <= 0) {
       this.fireMissile();
       this.missileCooldown = 1 / this.config.missileFireRate;
     }
 
-    // Fade muzzle flashes
-    for (let i = 0; i < this.muzzleFlashes.length; i++) {
-      if (this.flashTimers[i] > 0) {
-        this.flashTimers[i] -= delta;
-        const t = Math.max(0, this.flashTimers[i] / this.FLASH_DURATION);
-        (this.muzzleFlashes[i].material as THREE.SpriteMaterial).opacity = t * 0.95;
-      }
-    }
+    this.updateFlashes(delta);
   }
 
   // ── PRIVATE: fire ────────────────────────────
@@ -136,75 +157,72 @@ export class WeaponSystem {
   private fireBullet(): void {
     this.bulletsLeft--;
 
-    // Alternate barrels
     const barrelLocal = GUN_BARRELS[this.barrelIndex % GUN_BARRELS.length];
+    const flashIdx    = this.barrelIndex % GUN_BARRELS.length;
     this.barrelIndex++;
 
     const { origin, forward } = this.getWorldTransform(barrelLocal);
 
-    // Slight random spread (realistic machine gun dispersion)
     const spread = 0.0018;
     forward.x += (Math.random() - 0.5) * spread;
     forward.y += (Math.random() - 0.5) * spread;
     forward.normalize();
 
     this.projectileManager.spawn('bullet', origin, forward, this.getCockpitVelocity());
-
-    // Trigger muzzle flash on the correct barrel
-    const flashIdx = (this.barrelIndex - 1) % GUN_BARRELS.length;
     this.triggerFlash(flashIdx);
   }
 
   private fireMissile(): void {
-    this.missilesLeft--;
-
+    // No decrement — missiles are unlimited
     const { origin, forward } = this.getWorldTransform(MISSILE_HARDPOINT);
     this.projectileManager.spawn('missile', origin, forward, this.getCockpitVelocity());
   }
 
+  // ── PRIVATE: flash update ────────────────────
+
+  private updateFlashes(delta: number): void {
+    for (let i = 0; i < this.muzzleFlashes.length; i++) {
+      if (this.flashTimers[i] <= 0) continue;
+
+      this.flashTimers[i] -= delta;
+      const t = Math.max(0, this.flashTimers[i] / this.FLASH_DURATION);  // 1→0
+
+      const { core, primary, secondary } = this.muzzleFlashes[i];
+
+      // Core: instant, sharp; stays bright then fades in second half
+      const coreT = t > 0.5 ? 1.0 : t * 2;
+      (core.material      as THREE.SpriteMaterial).opacity = 0.95 * coreT;
+
+      // Primary flash cone: brightest in first half, rapid fade
+      (primary.material   as THREE.SpriteMaterial).opacity = 0.85 * t;
+
+      // Secondary bloom: larger, dimmer, fades slower
+      (secondary.material as THREE.SpriteMaterial).opacity = 0.45 * Math.sqrt(t);
+
+      // Bloom expands as gas vents outward
+      const bloomScale = 4.5 + (1 - t) * 3.5;
+      secondary.scale.setScalar(bloomScale);
+    }
+  }
+
   // ── PRIVATE: helpers ─────────────────────────
 
-  /**
-   * Convert a local-space offset on the cockpit to a world-space
-   * position + normalized forward direction.
-   */
   private getWorldTransform(localOffset: THREE.Vector3): {
     origin:  THREE.Vector3;
     forward: THREE.Vector3;
   } {
-
     this.cockpitModel.updateWorldMatrix(true, false);
 
-    // World position of the barrel tip
     const origin = localOffset.clone();
     this.cockpitModel.localToWorld(origin);
 
-    // const forward = new THREE.Vector3();
-    // this.cockpitModel.getWorldDirection(forward);
-    // forward.negate();
-
-
-    // const target = new THREE.Vector3(450, 1450, 6200); // غيري الأرقام دي
-    // const target = new THREE.Vector3(0, 0, -1000); // غيري الأرقام دي
-    // this.cockpitModel.localToWorld(target);
-    
-    // const forward = target.sub(origin).normalize();
-
-    // World-space forward = cockpit's -Z axis (Three.js model convention)
     const forward = new THREE.Vector3(0, 70, 1000);
     forward.applyQuaternion(this.cockpitModel.quaternion).normalize();
 
     return { origin, forward };
   }
 
-  /**
-   * Approximate cockpit velocity by sampling its world direction × speed.
-   * Cockpit.ts moves the model with translateZ(currentSpeed) every frame,
-   * so we read the forward vector and scale by speed per second.
-   * Since we don't have direct access to currentSpeed here, we use a
-   * reasonable approximation that callers can override via setCockpitSpeed().
-   */
-  private _cockpitSpeed = 155;   // matches Cockpit.minSpeed default
+  private _cockpitSpeed = 155;
 
   public setCockpitSpeed(speed: number): void {
     this._cockpitSpeed = speed;
@@ -219,18 +237,23 @@ export class WeaponSystem {
   private triggerFlash(index: number): void {
     if (index < 0 || index >= this.muzzleFlashes.length) return;
     this.flashTimers[index] = this.FLASH_DURATION;
-    (this.muzzleFlashes[index].material as THREE.SpriteMaterial).opacity = 0.95;
+
+    const { core, primary, secondary } = this.muzzleFlashes[index];
+    (core.material      as THREE.SpriteMaterial).opacity = 0.95;
+    (primary.material   as THREE.SpriteMaterial).opacity = 0.85;
+    (secondary.material as THREE.SpriteMaterial).opacity = 0.45;
+    secondary.scale.setScalar(4.5);
   }
 
-  // ── PUBLIC GETTERS ───────────────────────────
+  // ── PUBLIC ───────────────────────────────────
 
   public getAmmoState(): { bullets: number; missiles: number } {
-    return { bullets: this.bulletsLeft, missiles: this.missilesLeft };
+    return { bullets: this.bulletsLeft, missiles: Infinity };
   }
 
   public dispose(): void {
     for (const flash of this.muzzleFlashes) {
-      this.cockpitModel.remove(flash);
+      this.cockpitModel.remove(flash.group);
     }
   }
 }

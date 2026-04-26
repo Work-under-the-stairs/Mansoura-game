@@ -37,7 +37,7 @@ export class Engine {
       0.1,
       80000,
     );
-    this.camera.position.set(450, 1450, 6200);
+    this.camera.position.set(450, 5450, 6200);
     this.camera.lookAt(900, 240, -12000);
 
     const existing = document.getElementById('game-world-root');
