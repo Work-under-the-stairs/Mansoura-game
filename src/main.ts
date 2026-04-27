@@ -2,6 +2,10 @@ import { LoadingScene } from './scenes/LoadingScene';
 import { MainMenuScene } from './scenes/MainMenuScene';
 import { NarrativeScene } from './scenes/NarrativeScene';
 import { Engine } from './scenes/game/Engine';
+import { OrientationGuard } from './utils/OrientationGuard';
+
+const orientationGuard = new OrientationGuard();
+
 // main.ts — add at the very top before anything else
   
 document.body.style.margin = '0';

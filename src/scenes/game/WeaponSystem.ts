@@ -15,15 +15,23 @@ interface WeaponConfig {
 const DEFAULT_CONFIG: WeaponConfig = {
   bulletFireRate:  18,
   missileFireRate: 0.7,
-  maxBullets:      350,
+  maxBullets:      10350,
 };
 
 const GUN_BARRELS: THREE.Vector3[] = [
-  new THREE.Vector3(20, -5, -50),
-  new THREE.Vector3(21, -5, -50),
+  new THREE.Vector3(10, -7, -50),
+  new THREE.Vector3(9, -7, -50),
+  new THREE.Vector3(10, -6, -50),
+  new THREE.Vector3(9, -6, -50),
+  new THREE.Vector3(9.5, -6.5, -50),
+  new THREE.Vector3(10, -7, -50),
+  new THREE.Vector3(9, -7, -50),
+  new THREE.Vector3(10, -6, -50),
+  new THREE.Vector3(9, -6, -50),
+  new THREE.Vector3(9.5, -6.5, -50),
 ];
 
-const MISSILE_HARDPOINT = new THREE.Vector3(-20, -5, -50);
+const MISSILE_HARDPOINT = new THREE.Vector3(-10, -10, -60);
 
 // ─────────────────────────────────────────────
 //  Muzzle flash — layered for realism
@@ -222,7 +230,7 @@ export class WeaponSystem {
     return { origin, forward };
   }
 
-  private _cockpitSpeed = 155;
+  private _cockpitSpeed = 255;
 
   public setCockpitSpeed(speed: number): void {
     this._cockpitSpeed = speed;

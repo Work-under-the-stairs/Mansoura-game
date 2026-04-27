@@ -137,10 +137,10 @@ export class Engine {
   // =====================
 
   private setupLights(): void {
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1);
     this.scene.add(ambientLight);
 
-    const sunLight = new THREE.DirectionalLight(0xfff3d0, 3.5);
+    const sunLight = new THREE.DirectionalLight(0xfff3d0, 4);
     sunLight.position.set(-9000, 8500, -5000);
     sunLight.castShadow = true;
 

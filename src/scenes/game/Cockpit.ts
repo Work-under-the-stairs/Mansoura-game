@@ -9,7 +9,7 @@ export class Cockpit {
     public model: THREE.Group | null = null;
     public weaponSystem: WeaponSystem | null = null;
 
-    public currentSpeed = 155;
+    public currentSpeed = 255;
 
     private rotationSpeed = { pitch: 0, roll: 0 };
 
@@ -17,8 +17,8 @@ export class Cockpit {
         sensitivity:      0.0006,
         damping:          0.94,
         maxRotationSpeed: 0.04,
-        minSpeed:         155,
-        maxSpeed:         200,
+        minSpeed:         255,
+        maxSpeed:         400,
         acceleration:     0.03
     };
 
@@ -40,7 +40,7 @@ export class Cockpit {
 
         loader.setDRACOLoader(dracoLoader);
 
-        loader.load('/models/cockpitNew.glb', (gltf) => {
+        loader.load('/models/cockpit2.glb', (gltf) => {
             this.model = gltf.scene;
             this.scene.add(this.model);
 
@@ -51,12 +51,12 @@ export class Cockpit {
             this.model.add(this.camera);
             // this.camera.position.set(0, 0.165, -0.276);
             // this.camera.lookAt(0, 0, 0.276);
-            this.camera.position.set(0, 0.24, -0.276);
-            this.camera.lookAt(0, 0.34, 0.276);
+            this.camera.position.set(0, 0.24, -0.2);
+            this.camera.lookAt(0, 0.34, 0.2);
             // this.camera.rotation.y = Math.PI;
 
             // Interior lighting
-            const dashLight = new THREE.SpotLight(0xffffff, 1);
+            const dashLight = new THREE.SpotLight(0xffffff, 0);
             dashLight.position.set(0, 0.5, -0.5);
             dashLight.angle    = Math.PI / 3;
 
@@ -70,7 +70,7 @@ export class Cockpit {
             this.model.add(lightTarget);
             dashLight.target = lightTarget;
 
-            const ambientCabinLight = new THREE.PointLight(0x88ccff, 0.8, 1);
+            const ambientCabinLight = new THREE.PointLight(0x88ccff, 0.2, 0.5);
             ambientCabinLight.position.set(0, 0.2, 0);
             this.model.add(ambientCabinLight);
 
@@ -166,7 +166,7 @@ export class Cockpit {
         this.model.rotateZ(this.rotationSpeed.roll);
         this.model.rotateY(-this.rotationSpeed.roll * 0.7);
         // this.model.translateZ(this.currentSpeed);
-        this.model.translateZ(-this.currentSpeed * delta);
+        this.model.translateZ(this.currentSpeed * delta);
 
         // 6. Weapons
         if (this.weaponSystem) {

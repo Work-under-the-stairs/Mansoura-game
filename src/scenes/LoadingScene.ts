@@ -209,7 +209,7 @@ export class LoadingScene {
       <div id="ls-gradient"></div>
 
       <div id="ls-content">
-        <h1 id="ls-title">معركة المنصورة الجوية</h1>
+        <h1 id="ls-title">معارك مصر الجوية</h1>
         <p id="ls-subtitle">١٤ أكتوبر ١٩٧٣</p>
 
         <div id="ls-bar-wrap">

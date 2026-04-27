@@ -299,7 +299,7 @@ export class MainMenuScene {
         .mm-sec-btn {
           position: relative;
           padding: 10px 28px;
-          background: rgba(255,255,255,0.04);
+          background: rgba(255,255,255,0.08);
           border: 1px solid rgba(255,255,255,0.15);
           border-radius: 2px;
           color: rgba(255,255,255,0.55);
@@ -312,7 +312,7 @@ export class MainMenuScene {
         }
 
         .mm-sec-btn:hover {
-          background: rgba(255,255,255,0.08);
+          background: rgba(255,255,255,0.12);
           border-color: rgba(255,255,255,0.3);
           color: rgba(255,255,255,0.85);
         }
@@ -325,10 +325,10 @@ export class MainMenuScene {
           justify-content: center;
           gap: 10px;
           padding: 10px 32px;
-          background: transparent;
+          background: rgba(180, 50, 50, 0.12);
           border: 1px solid rgba(180, 50, 50, 0.45);
           border-radius: 2px;
-          color: rgba(220, 100, 100, 0.7);
+          color: rgb(255, 97, 97);
           font-family: 'Cairo', sans-serif;
           font-size: 13px;
           font-weight: 600;
@@ -338,7 +338,7 @@ export class MainMenuScene {
         }
 
         #mm-quit-btn:hover {
-          background: rgba(180, 50, 50, 0.12);
+          background: rgba(180, 50, 50, 0.3);
           border-color: rgba(220, 80, 80, 0.7);
           color: rgba(255, 130, 130, 0.95);
         }
@@ -545,7 +545,7 @@ export class MainMenuScene {
             <div class="mm-line-ornament"></div>
           </div>
 
-          <h1 id="mm-title">معركة <span>المنصورة</span> الجوية</h1>
+          <h1 id="mm-title">معارك <span>مصر</span> الجوية</h1>
           <p id="mm-subtitle">١٤ أكتوبر ١٩٧٣</p>
 
           <div id="mm-divider">
@@ -565,8 +565,6 @@ export class MainMenuScene {
           </button>
 
           <div id="mm-secondary-btns">
-            <button class="mm-sec-btn">الإعدادات</button>
-            <button class="mm-sec-btn">السجلات</button>
             <button class="mm-sec-btn">كيفية اللعب</button>
             <button id="mm-quit-btn">
               <span class="mm-quit-icon"></span>

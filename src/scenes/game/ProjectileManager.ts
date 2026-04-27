@@ -8,108 +8,152 @@ export type ProjectileKind = 'bullet' | 'missile';
 export interface Projectile {
   kind:         ProjectileKind;
   mesh:         THREE.Object3D;
-  velocity:     THREE.Vector3;   // world-space velocity (units/s)
-  life:         number;          // seconds remaining before auto-destroy
-  maxLife:      number;          // original life duration (for fade math)
+  velocity:     THREE.Vector3;
+  life:         number;
+  maxLife:      number;
   alive:        boolean;
 
-  // bullet-only: tracer line rendering
-  prevPosition?: THREE.Vector3;  // position at last frame (for streak)
-  tracerLine?:   THREE.Line;     // the streak line object in scene
+  prevPosition?: THREE.Vector3;
+  tracerLine?:   THREE.Line;
+  glowLine?:     THREE.Line;   // second wider/softer line for glow effect
 
-  // missile-only
-  smokeTimer?:   number;         // seconds until next smoke puff
+  smokeTimer?:   number;
 }
 
-// ─────────────────────────────────────────────
-//  Smoke puff state
-// ─────────────────────────────────────────────
 interface SmokePuff {
   sprite:        THREE.Sprite;
-  life:          number;   // 0→1 normalized age
+  life:          number;
+  maxLife:       number;
   initialScale:  number;
   rotationSpeed: number;
+  velocity:      THREE.Vector3; // slight drift after spawn
 }
 
 // ─────────────────────────────────────────────
-//  Helper — build a round sprite material
+//  Smoke canvas texture  (soft gaussian puff)
+// ─────────────────────────────────────────────
+
+/**
+ * Draws a radial-gradient circle on a canvas and returns it as a texture.
+ * This removes the hard rectangular edge of default Sprite rendering.
+ *
+ * We create one shared texture per colour family so we don't spam the GPU.
+ */
+function makeSmokeTexture(size = 128): THREE.CanvasTexture {
+  const canvas  = document.createElement('canvas');
+  canvas.width  = size;
+  canvas.height = size;
+  const ctx     = canvas.getContext('2d')!;
+  const cx = size / 2, cy = size / 2, r = size / 2;
+
+  // Radial gradient: opaque white-grey centre → fully transparent edge
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+  grad.addColorStop(0.00, 'rgba(230, 228, 224, 1.0)');  // warm white core
+  grad.addColorStop(0.30, 'rgba(210, 208, 205, 0.85)'); // soft mid
+  grad.addColorStop(0.65, 'rgba(185, 183, 180, 0.40)'); // feathered
+  grad.addColorStop(1.00, 'rgba(160, 158, 155, 0.00)'); // fully transparent
+
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Subtle noise pass: small semi-transparent circles scattered inside
+  // This breaks the too-perfect gaussian look and adds some churn
+  for (let i = 0; i < 14; i++) {
+    const angle  = Math.random() * Math.PI * 2;
+    const dist   = Math.random() * r * 0.55;
+    const bx     = cx + Math.cos(angle) * dist;
+    const by     = cy + Math.sin(angle) * dist;
+    const br     = r * (0.08 + Math.random() * 0.18);
+    const alpha  = 0.06 + Math.random() * 0.10;
+    const luma   = Math.floor(200 + Math.random() * 30);
+
+    const bgrad  = ctx.createRadialGradient(bx, by, 0, bx, by, br);
+    bgrad.addColorStop(0,   `rgba(${luma},${luma},${luma},${alpha})`);
+    bgrad.addColorStop(1,   `rgba(${luma},${luma},${luma},0)`);
+    ctx.fillStyle = bgrad;
+    ctx.beginPath();
+    ctx.arc(bx, by, br, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.needsUpdate = true;
+  return tex;
+}
+
+// Singleton – one texture shared across all smoke puffs
+let _smokeTexture: THREE.CanvasTexture | null = null;
+function getSmokeTexture(): THREE.CanvasTexture {
+  if (!_smokeTexture) _smokeTexture = makeSmokeTexture(128);
+  return _smokeTexture;
+}
+
+// ─────────────────────────────────────────────
+//  Helper — sprite material (no map version for exhaust)
 // ─────────────────────────────────────────────
 function makeSpriteMat(
-  color: number,
+  color:   number,
   opacity: number,
   additive = false,
+  map?:    THREE.Texture,
 ): THREE.SpriteMaterial {
   return new THREE.SpriteMaterial({
     color,
+    map:         map ?? null,
     transparent: true,
     opacity,
-    blending:   additive ? THREE.AdditiveBlending : THREE.NormalBlending,
-    depthWrite: false,
+    blending:    additive ? THREE.AdditiveBlending : THREE.NormalBlending,
+    depthWrite:  false,
   });
 }
 
 // ─────────────────────────────────────────────
-//  Build missile mesh (called fresh per instance)
+//  Responsive line scale
+// ─────────────────────────────────────────────
+/**
+ * Returns a multiplier based on the shorter viewport dimension.
+ * Mobile (~390 px wide) → 1.0  (base)
+ * 1080p  (~1920px wide) → ~2.2 (boost so tracers remain visible)
+ * 4K     (~3840px wide) → ~3.2 (further boost)
+ *
+ * We use Math.sqrt so large screens get a moderate boost, not a crazy one.
+ */
+function screenScaleFactor(): number {
+  const ref  = 390; // iPhone-sized reference width
+  const dim  = Math.max(window.innerWidth, window.innerHeight); // use longer dim for landscape
+  return Math.max(1.0, Math.sqrt(dim / ref));
+}
+
+// ─────────────────────────────────────────────
+//  Missile mesh builder
 // ─────────────────────────────────────────────
 function buildMissileMesh(): THREE.Group {
   const group = new THREE.Group();
 
-  // ── Body ──
   const bodyGeo = new THREE.CylinderGeometry(0.38, 0.30, 8.0, 12);
   bodyGeo.rotateX(Math.PI / 2);
-  const bodyMat = new THREE.MeshStandardMaterial({
-    color:     0x8a9eae,
-    metalness: 0.88,
-    roughness: 0.22,
-  });
-  group.add(new THREE.Mesh(bodyGeo, bodyMat));
+  group.add(new THREE.Mesh(bodyGeo, new THREE.MeshStandardMaterial({ color: 0x8a9eae, metalness: 0.88, roughness: 0.22 })));
 
-  // ── Nose cone ──
   const noseGeo = new THREE.ConeGeometry(0.38, 3.2, 12);
   noseGeo.rotateX(Math.PI / 2);
   noseGeo.translate(0, 0, -5.6);
-  const noseMat = new THREE.MeshStandardMaterial({
-    color:     0x2e4050,
-    metalness: 0.92,
-    roughness: 0.18,
-  });
-  group.add(new THREE.Mesh(noseGeo, noseMat));
+  group.add(new THREE.Mesh(noseGeo, new THREE.MeshStandardMaterial({ color: 0x2e4050, metalness: 0.92, roughness: 0.18 })));
 
-  // ── Seeker dome (glass tip) ──
   const domeGeo = new THREE.SphereGeometry(0.22, 10, 10, 0, Math.PI * 2, 0, Math.PI / 2);
   domeGeo.rotateX(-Math.PI / 2);
   domeGeo.translate(0, 0, -7.2);
-  const domeMat = new THREE.MeshStandardMaterial({
-    color:       0x88ccff,
-    metalness:   0.1,
-    roughness:   0.05,
-    transparent: true,
-    opacity:     0.7,
-  });
-  group.add(new THREE.Mesh(domeGeo, domeMat));
+  group.add(new THREE.Mesh(domeGeo, new THREE.MeshStandardMaterial({ color: 0x88ccff, metalness: 0.1, roughness: 0.05, transparent: true, opacity: 0.7 })));
 
-  // ── Mid-body ring band (detail stripe) ──
   const ringGeo = new THREE.TorusGeometry(0.40, 0.055, 8, 20);
   ringGeo.rotateX(Math.PI / 2);
-  const ringMat = new THREE.MeshStandardMaterial({
-    color:     0xffcc00,
-    metalness: 0.6,
-    roughness: 0.3,
-    emissive:  0xffaa00,
-    emissiveIntensity: 0.3,
-  });
-  const ring = new THREE.Mesh(ringGeo, ringMat);
+  const ring = new THREE.Mesh(ringGeo, new THREE.MeshStandardMaterial({ color: 0xffcc00, metalness: 0.6, roughness: 0.3, emissive: 0xffaa00, emissiveIntensity: 0.3 }));
   ring.position.set(0, 0, -1.0);
   group.add(ring);
 
-  // ── Cruciform fins (4 swept delta fins) ──
-  const finMat = new THREE.MeshStandardMaterial({
-    color:     0x607080,
-    metalness: 0.75,
-    roughness: 0.35,
-  });
+  const finMat = new THREE.MeshStandardMaterial({ color: 0x607080, metalness: 0.75, roughness: 0.35 });
   for (let i = 0; i < 4; i++) {
-    // Each fin is a thin box, angled/swept
     const finGeo = new THREE.BoxGeometry(4.2, 0.06, 1.8);
     const fin = new THREE.Mesh(finGeo, finMat);
     fin.rotation.z = (i * Math.PI) / 2;
@@ -117,45 +161,28 @@ function buildMissileMesh(): THREE.Group {
     group.add(fin);
   }
 
-  // ── Nozzle bell (dark rim at rear) ──
-  const nozzleGeo = new THREE.CylinderGeometry(0.34, 0.28, 0.6, 12);
-  nozzleGeo.rotateX(Math.PI / 2);
-  const nozzleMat = new THREE.MeshStandardMaterial({
-    color:     0x111820,
-    metalness: 0.97,
-    roughness: 0.08,
-  });
-  const nozzle = new THREE.Mesh(nozzleGeo, nozzleMat);
+  const nozzle = new THREE.Mesh(
+    (() => { const g = new THREE.CylinderGeometry(0.34, 0.28, 0.6, 12); g.rotateX(Math.PI / 2); return g; })(),
+    new THREE.MeshStandardMaterial({ color: 0x111820, metalness: 0.97, roughness: 0.08 }),
+  );
   nozzle.position.set(0, 0, 4.3);
   group.add(nozzle);
 
-  // ── Exhaust: 3-layer sprite stack for hot engine plume ──
-  //    Core (white-hot, tight)
+  // Exhaust sprites (no change from original — these look fine)
   const exhaustCore = new THREE.Sprite(makeSpriteMat(0xffffff, 0.95, true));
-  exhaustCore.scale.set(1.4, 1.4, 1);
-  exhaustCore.position.set(0, 0, 5.0);
-  exhaustCore.name = 'exhaustCore';
+  exhaustCore.scale.set(1.4, 1.4, 1); exhaustCore.position.set(0, 0, 5.0); exhaustCore.name = 'exhaustCore';
   group.add(exhaustCore);
 
-  //    Mid flame (intense blue-white → orange)
   const exhaustMid = new THREE.Sprite(makeSpriteMat(0xff7722, 0.80, true));
-  exhaustMid.scale.set(2.8, 2.8, 1);
-  exhaustMid.position.set(0, 0, 5.8);
-  exhaustMid.name = 'exhaustMid';
+  exhaustMid.scale.set(2.8, 2.8, 1); exhaustMid.position.set(0, 0, 5.8); exhaustMid.name = 'exhaustMid';
   group.add(exhaustMid);
 
-  //    Outer bloom (diffuse amber)
   const exhaustOuter = new THREE.Sprite(makeSpriteMat(0xff9900, 0.40, true));
-  exhaustOuter.scale.set(5.5, 5.5, 1);
-  exhaustOuter.position.set(0, 0, 6.5);
-  exhaustOuter.name = 'exhaustOuter';
+  exhaustOuter.scale.set(5.5, 5.5, 1); exhaustOuter.position.set(0, 0, 6.5); exhaustOuter.name = 'exhaustOuter';
   group.add(exhaustOuter);
 
-  //    Long flame tail (streaks behind)
   const flameTail = new THREE.Sprite(makeSpriteMat(0xff4400, 0.25, true));
-  flameTail.scale.set(2.2, 9.0, 1);
-  flameTail.position.set(0, 0, 8.5);
-  flameTail.name = 'flameTail';
+  flameTail.scale.set(2.2, 9.0, 1); flameTail.position.set(0, 0, 8.5); flameTail.name = 'flameTail';
   group.add(flameTail);
 
   return group;
@@ -168,24 +195,19 @@ export class ProjectileManager {
   private projectiles: Projectile[] = [];
   private smokePuffs:  SmokePuff[]  = [];
 
-  // ── Tunables ────────────────────────────────
-  private readonly BULLET_SPEED      = 4800;
-  private readonly BULLET_LIFE       = 1.6;
+  private readonly BULLET_SPEED   = 4800;
+  private readonly BULLET_LIFE    = 1.6;
+  private readonly TRACER_LENGTH  = 120;
 
-  // Tracer streak length = BULLET_SPEED * TRACER_DURATION
-  // At 4800 u/s × 0.016 s = ~77 units of visible streak per frame
-  // We keep N frames of history to draw a longer, more visible tracer
-  private readonly TRACER_LENGTH     = 120;   // world-units — visible streak length
-
-  private readonly MISSILE_SPEED     = 1800;
-  private readonly MISSILE_ACCEL     = 220;
-  private readonly MISSILE_LIFE      = 8.0;
-  private readonly SMOKE_INTERVAL    = 0.032;  // s — dense trail
-  private readonly SMOKE_LIFE_MAX    = 1.8;    // s — lingers longer
+  private readonly MISSILE_SPEED  = 1800;
+  private readonly MISSILE_ACCEL  = 220;
+  private readonly MISSILE_LIFE   = 8.0;
+  private readonly SMOKE_INTERVAL = 0.028;
+  private readonly SMOKE_LIFE_MAX = 2.2;
 
   constructor(private scene: THREE.Scene) {}
 
-  // ── PUBLIC API ──────────────────────────────
+  // ── PUBLIC ──────────────────────────────────
 
   public spawn(
     kind:         ProjectileKind,
@@ -207,59 +229,45 @@ export class ProjectileManager {
     for (const p of this.projectiles) {
       this.scene.remove(p.mesh);
       if (p.tracerLine) this.scene.remove(p.tracerLine);
+      if (p.glowLine)   this.scene.remove(p.glowLine);
     }
     for (const s of this.smokePuffs) this.scene.remove(s.sprite);
     this.projectiles = [];
     this.smokePuffs  = [];
   }
 
-  // ── PRIVATE: spawn ───────────────────────────
+  // ── SPAWN ────────────────────────────────────
 
-  /**
-   * BULLET — rendered as a tracer streak line, NOT a moving mesh.
-   *
-   * Real tracer rounds travel ~900 m/s. At 60 fps that's 15 m per frame —
-   * far too fast to see a discrete object. What you actually perceive is a
-   * luminous line (streak) sweeping across the scene. We replicate this by:
-   *   1. Keeping a "ghost" invisible point-object that moves each frame.
-   *   2. Drawing a Line from (currentPos - direction * TRACER_LENGTH) to currentPos.
-   *   3. Using vertex colors so the tail fades to transparent.
-   */
-  private spawnBullet(
-    origin:  THREE.Vector3,
-    dir:     THREE.Vector3,
-    baseVel: THREE.Vector3,
-  ): void {
-    // Invisible anchor that the physics engine moves
+  private spawnBullet(origin: THREE.Vector3, dir: THREE.Vector3, baseVel: THREE.Vector3): void {
+    // ── Invisible anchor (physics point) ──
     const anchor = new THREE.Object3D();
     anchor.position.copy(origin);
     this.scene.add(anchor);
 
-    // ── Tracer line geometry ──
-    // 2 vertices: [tail, head]. We update them every frame.
-    const positions = new Float32Array(2 * 3);  // 2 points × xyz
-    const colors    = new Float32Array(2 * 3);  // 2 points × rgb
-
-    const lineGeo = new THREE.BufferGeometry();
-    lineGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    lineGeo.setAttribute('color',    new THREE.BufferAttribute(colors,    3));
-
-    const lineMat = new THREE.LineBasicMaterial({
+    // ── Core tracer line (sharp, bright) ──
+    const coreGeo  = this.makeTracerGeo();
+    const coreMat  = new THREE.LineBasicMaterial({
       vertexColors: true,
       transparent:  true,
       blending:     THREE.AdditiveBlending,
       depthWrite:   false,
-      linewidth:    1,  // note: WebGL ignores >1 on most GPUs; use fatline for thick
     });
-
-    const tracerLine = new THREE.Line(lineGeo, lineMat);
+    const tracerLine = new THREE.Line(coreGeo, coreMat);
     this.scene.add(tracerLine);
 
-    // ── Small bright head sprite (the "hot tip") ──
-    const headSprite = new THREE.Sprite(makeSpriteMat(0xfffde0, 0.9, true));
-    headSprite.scale.set(0.9, 0.9, 1);
-    headSprite.name = 'headSprite';
-    anchor.add(headSprite);
+    // ── Glow line (wider, softer — faked by using a second line with bloom-like color) ──
+    // WebGL doesn't support linewidth > 1, but we can stack a second semi-transparent
+    // line with a larger sprite at each vertex to simulate softness on large screens.
+    const glowGeo = this.makeTracerGeo();
+    const glowMat = new THREE.LineBasicMaterial({
+      vertexColors: true,
+      transparent:  true,
+      blending:     THREE.AdditiveBlending,
+      depthWrite:   false,
+      opacity:      0.35,
+    });
+    const glowLine = new THREE.Line(glowGeo, glowMat);
+    this.scene.add(glowLine);
 
     const velocity = dir.clone().multiplyScalar(this.BULLET_SPEED).add(baseVel);
 
@@ -272,41 +280,46 @@ export class ProjectileManager {
       alive:        true,
       prevPosition: origin.clone(),
       tracerLine,
+      glowLine,
     });
   }
 
-  private spawnMissile(
-    origin:  THREE.Vector3,
-    dir:     THREE.Vector3,
-    baseVel: THREE.Vector3,
-  ): void {
-    const group = buildMissileMesh();
+  private makeTracerGeo(): THREE.BufferGeometry {
+    const positions = new Float32Array(2 * 3);
+    const colors    = new Float32Array(2 * 3);
+    const geo       = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('color',    new THREE.BufferAttribute(colors,    3));
+    return geo;
+  }
 
-    const q = new THREE.Quaternion().setFromUnitVectors(
-      new THREE.Vector3(0, 0, -1), dir,
-    );
-    group.quaternion.copy(q);
+  private spawnMissile(origin: THREE.Vector3, dir: THREE.Vector3, baseVel: THREE.Vector3): void {
+    const group = buildMissileMesh();
+    group.quaternion.copy(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, -1), dir));
     group.position.copy(origin);
     this.scene.add(group);
 
     const velocity = dir.clone().multiplyScalar(this.MISSILE_SPEED).add(baseVel);
 
     this.projectiles.push({
-      kind:        'missile',
-      mesh:        group,
+      kind:       'missile',
+      mesh:       group,
       velocity,
-      life:        this.MISSILE_LIFE,
-      maxLife:     this.MISSILE_LIFE,
-      alive:       true,
-      smokeTimer:  0,
+      life:       this.MISSILE_LIFE,
+      maxLife:    this.MISSILE_LIFE,
+      alive:      true,
+      smokeTimer: 0,
     });
   }
 
-  // ── PRIVATE: update ──────────────────────────
+  // ── UPDATE ───────────────────────────────────
 
   private updateProjectiles(delta: number): void {
     const toRemove: Projectile[] = [];
     const t = Date.now() * 0.001;
+
+    // Scale tracer brightness/width with screen size
+    const ssf = screenScaleFactor();
 
     for (const p of this.projectiles) {
       if (!p.alive) continue;
@@ -318,147 +331,158 @@ export class ProjectileManager {
         continue;
       }
 
-      // ────────── BULLET ──────────
+      // ─── BULLET ─────────────────────────────
       if (p.kind === 'bullet') {
-        // Move the anchor
         p.mesh.position.addScaledVector(p.velocity, delta);
 
-        // Fade factor for final 20% of life
-        const fadeRatio = Math.min(1, p.life / (p.maxLife * 0.20));
+        const fadeRatio  = Math.min(1, p.life / (p.maxLife * 0.20));
+        const travelled  = p.velocity.length() * (p.maxLife - p.life);
+        const streakLen  = Math.min(this.TRACER_LENGTH * ssf, travelled);
+        const dir        = p.velocity.clone().normalize();
+        const head       = p.mesh.position.clone();
+        const tail       = head.clone().addScaledVector(dir, -streakLen);
 
-        // Update tracer line:
-        //   head = current bullet position (world space)
-        //   tail = clamped to spawn origin so streak never goes behind gun barrel
+        // ── Core line ──
         if (p.tracerLine) {
-          const head = p.mesh.position.clone();
-          const dir  = p.velocity.clone().normalize();
-
-          // How far has this bullet actually travelled since spawn?
-          const travelled = p.velocity.length() * (p.maxLife - p.life);
-          // Clamp streak length so it doesn't extend behind the barrel on first frames
-          const streakLen  = Math.min(this.TRACER_LENGTH, travelled);
-          const tail = head.clone().addScaledVector(dir, -streakLen);
-
-          const posAttr = p.tracerLine.geometry.getAttribute('position') as THREE.BufferAttribute;
-          // tail vertex (index 0) — dim
-          posAttr.setXYZ(0, tail.x, tail.y, tail.z);
-          // head vertex (index 1) — bright
-          posAttr.setXYZ(1, head.x, head.y, head.z);
-          posAttr.needsUpdate = true;
-
-          // Vertex colors: tail = dark orange (dim), head = near-white (hot)
-          const colAttr = p.tracerLine.geometry.getAttribute('color') as THREE.BufferAttribute;
-          // tail color: faint orange-red
-          colAttr.setXYZ(0, 1.0 * 0.6 * fadeRatio, 0.55 * 0.4 * fadeRatio, 0.0);
-          // head color: bright white-yellow
-          colAttr.setXYZ(1, 1.0 * fadeRatio, 0.97 * fadeRatio, 0.75 * fadeRatio);
-          colAttr.needsUpdate = true;
-
-          (p.tracerLine.material as THREE.LineBasicMaterial).opacity = fadeRatio;
+          this.updateTracerGeo(
+            p.tracerLine.geometry,
+            tail, head,
+            // tail: dim orange-red
+            { r: 1.0 * 0.55 * fadeRatio, g: 0.50 * 0.35 * fadeRatio, b: 0.0 },
+            // head: hot white-yellow  — boosted on large screens
+            { r: Math.min(1, 1.0 * ssf * fadeRatio), g: Math.min(1, 0.97 * ssf * 0.85 * fadeRatio), b: Math.min(1, 0.75 * ssf * 0.6 * fadeRatio) },
+          );
+          (p.tracerLine.material as THREE.LineBasicMaterial).opacity = Math.min(1, fadeRatio * ssf * 0.9);
         }
 
-        // Fade head sprite
-        const headSprite = p.mesh.getObjectByName('headSprite') as THREE.Sprite | undefined;
-        if (headSprite) {
-          (headSprite.material as THREE.SpriteMaterial).opacity = 0.9 * fadeRatio;
+        // ── Glow line (slightly longer, softer colours) ──
+        if (p.glowLine) {
+          const glowTail = head.clone().addScaledVector(dir, -(streakLen * 1.3));
+          this.updateTracerGeo(
+            p.glowLine.geometry,
+            glowTail, head,
+            { r: 0.8 * fadeRatio, g: 0.30 * fadeRatio, b: 0.0 },
+            { r: Math.min(1, 1.0 * ssf * fadeRatio), g: Math.min(1, 0.75 * ssf * fadeRatio), b: Math.min(1, 0.40 * ssf * fadeRatio) },
+          );
+          (p.glowLine.material as THREE.LineBasicMaterial).opacity = Math.min(1, 0.30 * ssf * fadeRatio);
         }
+
+        // ── NO headSprite — removed to avoid the square artifact ──
       }
 
-      // ────────── MISSILE ──────────
+      // ─── MISSILE ────────────────────────────
       if (p.kind === 'missile') {
-        // Accelerate along heading
         const dir = p.velocity.clone().normalize();
         p.velocity.addScaledVector(dir, this.MISSILE_ACCEL * delta);
 
-        // Keep missile oriented along velocity
-        const q = new THREE.Quaternion().setFromUnitVectors(
-          new THREE.Vector3(0, 0, -1),
-          dir,
-        );
-        p.mesh.quaternion.copy(q);
+        p.mesh.quaternion.copy(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, -1), dir));
 
-        // Pulse exhaust layers (combustion flicker)
-        const flicker     = 0.82 + 0.36 * Math.sin(t * 42 + 1.7);
-        const flickerSlow = 0.88 + 0.24 * Math.sin(t * 13);
-        const flickerTail = 0.75 + 0.50 * Math.sin(t * 7.5);
+        // Exhaust flicker
+        const fl  = 0.82 + 0.36 * Math.sin(t * 42 + 1.7);
+        const fls = 0.88 + 0.24 * Math.sin(t * 13);
+        const flt = 0.75 + 0.50 * Math.sin(t * 7.5);
 
-        const core  = p.mesh.getObjectByName('exhaustCore')  as THREE.Sprite | undefined;
-        const mid   = p.mesh.getObjectByName('exhaustMid')   as THREE.Sprite | undefined;
-        const outer = p.mesh.getObjectByName('exhaustOuter') as THREE.Sprite | undefined;
-        const tail  = p.mesh.getObjectByName('flameTail')    as THREE.Sprite | undefined;
+        this.setSprite(p.mesh, 'exhaustCore',  (s) => { s.scale.setScalar(1.2 + 0.5 * fl);   (s.material as THREE.SpriteMaterial).opacity = 0.95 * fl; });
+        this.setSprite(p.mesh, 'exhaustMid',   (s) => { s.scale.setScalar(2.4 + 1.0 * fls);  (s.material as THREE.SpriteMaterial).opacity = 0.78 * fls; });
+        this.setSprite(p.mesh, 'exhaustOuter', (s) => { s.scale.setScalar(4.8 + 2.0 * fls);  (s.material as THREE.SpriteMaterial).opacity = 0.38 * fls; });
+        this.setSprite(p.mesh, 'flameTail',    (s) => { s.scale.set(2.0 + flt * 1.2, 8.0 + flt * 6.0, 1); (s.material as THREE.SpriteMaterial).opacity = 0.22 * flt; });
 
-        if (core) {
-          core.scale.setScalar(1.2 + 0.5 * flicker);
-          (core.material as THREE.SpriteMaterial).opacity = 0.95 * flicker;
-        }
-        if (mid) {
-          mid.scale.setScalar(2.4 + 1.0 * flickerSlow);
-          (mid.material as THREE.SpriteMaterial).opacity = 0.78 * flickerSlow;
-        }
-        if (outer) {
-          outer.scale.setScalar(4.8 + 2.0 * flickerSlow);
-          (outer.material as THREE.SpriteMaterial).opacity = 0.38 * flickerSlow;
-        }
-        if (tail) {
-          tail.scale.set(2.0 + flickerTail * 1.2, 8.0 + flickerTail * 6.0, 1);
-          (tail.material as THREE.SpriteMaterial).opacity = 0.22 * flickerTail;
-        }
-
-        // Emit smoke
         p.smokeTimer! -= delta;
         if (p.smokeTimer! <= 0) {
           p.smokeTimer = this.SMOKE_INTERVAL;
           this.spawnSmokePuff(p.mesh.position.clone(), dir);
         }
 
-        // Move missile (bullets already moved above)
         p.mesh.position.addScaledVector(p.velocity, delta);
       }
     }
 
     for (const p of toRemove) {
       this.scene.remove(p.mesh);
-      if (p.tracerLine) this.scene.remove(p.tracerLine);
+      if (p.tracerLine) { p.tracerLine.geometry.dispose(); this.scene.remove(p.tracerLine); }
+      if (p.glowLine)   { p.glowLine.geometry.dispose();   this.scene.remove(p.glowLine); }
     }
     this.projectiles = this.projectiles.filter((p) => p.alive);
   }
 
-  // ── Smoke puff ───────────────────────────────
+  private updateTracerGeo(
+    geo:  THREE.BufferGeometry,
+    tail: THREE.Vector3,
+    head: THREE.Vector3,
+    tailColor: { r: number; g: number; b: number },
+    headColor: { r: number; g: number; b: number },
+  ): void {
+    const posAttr = geo.getAttribute('position') as THREE.BufferAttribute;
+    posAttr.setXYZ(0, tail.x, tail.y, tail.z);
+    posAttr.setXYZ(1, head.x, head.y, head.z);
+    posAttr.needsUpdate = true;
+
+    const colAttr = geo.getAttribute('color') as THREE.BufferAttribute;
+    colAttr.setXYZ(0, tailColor.r, tailColor.g, tailColor.b);
+    colAttr.setXYZ(1, headColor.r, headColor.g, headColor.b);
+    colAttr.needsUpdate = true;
+  }
+
+  private setSprite(root: THREE.Object3D, name: string, fn: (s: THREE.Sprite) => void): void {
+    const s = root.getObjectByName(name) as THREE.Sprite | undefined;
+    if (s) fn(s);
+  }
+
+  // ── SMOKE ────────────────────────────────────
 
   /**
-   * Spawn a turbulent exhaust puff with slight random offset perpendicular
-   * to the missile's heading, so the trail looks organic rather than linear.
+   * Each puff uses a canvas-generated radial-gradient texture so it looks
+   * like a soft billowing cloud instead of a flat white square.
+   *
+   * Behaviour:
+   *  - Spawns slightly offset from missile centre (turbulent drift)
+   *  - Expands rapidly at first, then slows (sqrt easing)
+   *  - Fades out with a smooth squared curve
+   *  - Has a slight upward + sideways drift velocity
+   *  - Rotates slowly for organic churn
    */
   private spawnSmokePuff(position: THREE.Vector3, forward: THREE.Vector3): void {
-    const right = new THREE.Vector3()
-      .crossVectors(forward, new THREE.Vector3(0, 1, 0))
-      .normalize();
-    const up = new THREE.Vector3().crossVectors(right, forward).normalize();
+    const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+    const up    = new THREE.Vector3().crossVectors(right, forward).normalize();
 
-    const drift = right
-      .clone()
-      .multiplyScalar((Math.random() - 0.5) * 2.5)
-      .addScaledVector(up, (Math.random() - 0.5) * 2.5);
+    // Turbulent spawn offset — keeps trail from looking like a laser beam
+    position.addScaledVector(right, (Math.random() - 0.5) * 3.0);
+    position.addScaledVector(up,    (Math.random() - 0.5) * 3.0);
 
-    position.add(drift);
+    const tex = getSmokeTexture();
+    const mat = new THREE.SpriteMaterial({
+      map:         tex,
+      transparent: true,
+      opacity:     0.48 + Math.random() * 0.12,
+      blending:    THREE.NormalBlending,
+      depthWrite:  false,
+      // Color tint — vary slightly between warm and cool grey
+      color: new THREE.Color().setHSL(0.08 + Math.random() * 0.06, 0.08, 0.82 + Math.random() * 0.12),
+      rotation: Math.random() * Math.PI * 2,
+    });
 
-    // Colour variety: warm-grey (fresh) → cool-grey (aged)
-    const shades = [0xe0ddd8, 0xd0d0d0, 0xc8cdd2, 0xd8d4cf, 0xcfcfcf];
-    const color  = shades[Math.floor(Math.random() * shades.length)];
-
-    const mat    = makeSpriteMat(color, 0.42);
     const sprite = new THREE.Sprite(mat);
     sprite.position.copy(position);
 
-    const initialScale = 4.0 + Math.random() * 3.5;
+    const initialScale = 5.0 + Math.random() * 4.0;
     sprite.scale.setScalar(initialScale);
 
     this.scene.add(sprite);
+
+    // Drift: mostly upward + slight perpendicular component (hot exhaust rises)
+    const drift = new THREE.Vector3(
+      (Math.random() - 0.5) * 8,
+      12 + Math.random() * 10,  // buoyancy — smoke rises
+      (Math.random() - 0.5) * 8,
+    );
+
     this.smokePuffs.push({
       sprite,
       life:          0,
+      maxLife:       this.SMOKE_LIFE_MAX * (0.8 + Math.random() * 0.4),
       initialScale,
-      rotationSpeed: (Math.random() - 0.5) * 1.5,
+      rotationSpeed: (Math.random() - 0.5) * 0.8,
+      velocity:      drift,
     });
   }
 
@@ -466,21 +490,34 @@ export class ProjectileManager {
     const toRemove: SmokePuff[] = [];
 
     for (const s of this.smokePuffs) {
-      s.life += delta / this.SMOKE_LIFE_MAX;
+      s.life += delta;
+      const t = s.life / s.maxLife; // 0 → 1 normalised age
 
-      // Expand: fast at first (sqrt easing), then slow — natural billowing
-      const expand = Math.sqrt(s.life);
-      s.sprite.scale.setScalar(s.initialScale + expand * 26);
+      // Drift position
+      s.sprite.position.addScaledVector(s.velocity, delta);
 
-      // Rotate sprite on Z for turbulent roll
-      s.sprite.material.rotation += s.rotationSpeed * delta;
+      // Expand: fast at first (sqrt), then slows — natural billowing
+      const expand = Math.sqrt(t);
+      s.sprite.scale.setScalar(s.initialScale + expand * 30);
 
-      // Fade: squared for quick fade-in then slow lingering fade
-      const fade = 1 - s.life;
-      (s.sprite.material as THREE.SpriteMaterial).opacity = 0.42 * fade * fade;
+      // Rotate for turbulent churn
+      (s.sprite.material as THREE.SpriteMaterial).rotation += s.rotationSpeed * delta;
 
-      if (s.life >= 1) {
+      // Fade: linear in, squared out for a natural lingering trail
+      let opacity: number;
+      if (t < 0.12) {
+        // Quick fade IN (prevent pop-on at birth)
+        opacity = (t / 0.12) * 0.46;
+      } else {
+        // Slow fade out — squared so it lingers, then vanishes cleanly
+        const fadeT = (t - 0.12) / (1 - 0.12);
+        opacity = 0.46 * (1 - fadeT * fadeT);
+      }
+      (s.sprite.material as THREE.SpriteMaterial).opacity = Math.max(0, opacity);
+
+      if (t >= 1) {
         this.scene.remove(s.sprite);
+        s.sprite.material.dispose();
         toRemove.push(s);
       }
     }
