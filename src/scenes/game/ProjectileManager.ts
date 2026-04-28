@@ -524,4 +524,5 @@ export class ProjectileManager {
 
     this.smokePuffs = this.smokePuffs.filter((s) => !toRemove.includes(s));
   }
+  public getProjectiles() { return this.projectiles; }
 }

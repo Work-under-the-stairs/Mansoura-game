@@ -6,6 +6,8 @@ import { MobileControls } from './MobileControls';
 import { EnemyManager } from './EnemyManager';
 import { LoadingScene } from '../LoadingScene';
 import { ProjectileManager } from './ProjectileManager';
+import { CombatSystem } from './CombatSystem';
+
 
 export class Engine {
   private loadingScene: LoadingScene;
@@ -17,6 +19,7 @@ export class Engine {
   private controls: Controls;
   private world: World;
   private enemies: EnemyManager;
+  private combatSystem: CombatSystem;
 
   private container: HTMLDivElement;
   private clock = new THREE.Clock();
@@ -99,7 +102,16 @@ export class Engine {
       this.projectileManager,
     );
     // 👾 Enemies — receives cockpit reference for accurate world position & forward
+    // this.enemies = new EnemyManager(this.scene, this.camera, this.cockpit);
     this.enemies = new EnemyManager(this.scene, this.camera, this.cockpit);
+
+    this.combatSystem = new CombatSystem(
+      this.scene,
+      this.camera,
+      this.cockpit,
+      this.enemies,
+      this.projectileManager,
+    );
 
     this.setupLights();
     this.createEnvironment();
@@ -185,6 +197,7 @@ export class Engine {
     if (this.world)   this.world.update(delta);
     if (this.enemies) this.enemies.update(delta);
     this.projectileManager.update(delta);
+    this.combatSystem.update(delta);
 
     this.renderer.render(this.scene, this.camera);
   };
@@ -197,6 +210,10 @@ export class Engine {
     if (this.mobileControls)              this.mobileControls.destroy();
     if (this.cockpit.weaponSystem)        this.cockpit.weaponSystem.dispose();
     if (this.projectileManager)           this.projectileManager.dispose();
+
+    // if (this.enemies)           this.enemies.dispose();
+    if (this.combatSystem)      this.combatSystem.dispose();
+    // if (this.projectileManager) this.projectileManager.dispose();
 
     this.renderer.dispose();
     this.container.remove();
