@@ -56,7 +56,7 @@ export class NarrativeScene {
     if (!this.scrollAudio) return;
     
     try {
-      this.scrollAudio.currentTime = 5.5; // Start from beginning
+      this.scrollAudio.currentTime = 6; // Start from beginning
       this.scrollAudio.play().catch(() => {});
       
       // Stop the audio after the specified duration (the snippet)
