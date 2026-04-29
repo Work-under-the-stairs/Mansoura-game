@@ -7,6 +7,7 @@ import { EnemyManager } from './EnemyManager';
 import { LoadingScene } from '../LoadingScene';
 import { ProjectileManager } from './ProjectileManager';
 import { CombatSystem } from './CombatSystem';
+import { NotificationSystem } from './NotificationSystem';
 
 
 export class Engine {
@@ -20,6 +21,7 @@ export class Engine {
   private world: World;
   private enemies: EnemyManager;
   private combatSystem: CombatSystem;
+  private notifications: NotificationSystem;
 
   private container: HTMLDivElement;
   private clock = new THREE.Clock();
@@ -49,7 +51,6 @@ export class Engine {
     this.container = document.createElement('div');
     this.container.id = 'game-world-root';
     this.container.style.position = 'fixed';
-
     this.container.style.inset = '0';
     this.container.style.zIndex = '5';
     this.container.style.background =
@@ -66,12 +67,15 @@ export class Engine {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.toneMapping         = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
-
     this.renderer.outputColorSpace    = THREE.SRGBColorSpace;
     this.renderer.shadowMap.enabled   = true;
     this.renderer.shadowMap.type      = THREE.PCFSoftShadowMap;
 
     this.container.appendChild(this.renderer.domElement);
+
+    // ── Notification system — mounted on document.body ──
+    // Must be constructed BEFORE CombatSystem so it can be passed in
+    this.notifications = new NotificationSystem();
 
     this.controls       = new Controls();
     this.mobileControls = new MobileControls(this.container, this.controls);
@@ -89,11 +93,8 @@ export class Engine {
       this.renderer,
     );
 
-    // ProjectileManager needs only the scene — ready immediately
     this.projectileManager = new ProjectileManager(this.scene);
 
-    // Cockpit receives projectileManager and creates WeaponSystem
-    // internally after the GLB finishes loading
     this.cockpit = new Cockpit(
       this.scene,
       this.camera,
@@ -101,8 +102,7 @@ export class Engine {
       this.loadingManager,
       this.projectileManager,
     );
-    // 👾 Enemies — receives cockpit reference for accurate world position & forward
-    // this.enemies = new EnemyManager(this.scene, this.camera, this.cockpit);
+
     this.enemies = new EnemyManager(this.scene, this.camera, this.cockpit);
 
     this.combatSystem = new CombatSystem(
@@ -111,6 +111,7 @@ export class Engine {
       this.cockpit,
       this.enemies,
       this.projectileManager,
+      this.notifications,       // ← wired in here
     );
 
     this.setupLights();
@@ -118,8 +119,15 @@ export class Engine {
 
     window.addEventListener('resize', this.onWindowResize);
 
-    // 👇 Hide everything immediately — assets load silently in background
     this.hide();
+  }
+
+  // =====================
+  //  Notification API
+  // =====================
+
+  public get notif(): NotificationSystem {
+    return this.notifications;
   }
 
   // =====================
@@ -130,7 +138,6 @@ export class Engine {
     this.container.style.visibility = 'hidden';
     this.container.style.pointerEvents = 'none';
 
-    // Also hide mobile controls if they were injected
     const mobileControls = document.getElementById('mobile-controls');
     if (mobileControls) mobileControls.style.display = 'none';
   }
@@ -139,7 +146,6 @@ export class Engine {
     this.container.style.visibility = 'visible';
     this.container.style.pointerEvents = 'auto';
 
-    // Restore mobile controls
     const mobileControls = document.getElementById('mobile-controls');
     if (mobileControls) mobileControls.style.display = '';
   }
@@ -192,7 +198,6 @@ export class Engine {
 
     const delta = this.clock.getDelta();
 
-
     if (this.cockpit) this.cockpit.update(delta);
     if (this.world)   this.world.update(delta);
     if (this.enemies) this.enemies.update(delta);
@@ -206,19 +211,17 @@ export class Engine {
     window.cancelAnimationFrame(this.animationFrameId);
     window.removeEventListener('resize', this.onWindowResize);
 
-    if (this.world)                       this.world.dispose();
-    if (this.mobileControls)              this.mobileControls.destroy();
-    if (this.cockpit.weaponSystem)        this.cockpit.weaponSystem.dispose();
-    if (this.projectileManager)           this.projectileManager.dispose();
-
-    // if (this.enemies)           this.enemies.dispose();
-    if (this.combatSystem)      this.combatSystem.dispose();
-    // if (this.projectileManager) this.projectileManager.dispose();
+    if (this.world)                this.world.dispose();
+    if (this.mobileControls)       this.mobileControls.destroy();
+    if (this.cockpit.weaponSystem) this.cockpit.weaponSystem.dispose();
+    if (this.projectileManager)    this.projectileManager.dispose();
+    if (this.combatSystem)         this.combatSystem.dispose();
+    if (this.notifications)        this.notifications.destroy();
 
     this.renderer.dispose();
     this.container.remove();
 
-    console.log('Engine Destroyed safely.');
+    console.log('Engine destroyed safely.');
   }
 
   public onReady(callback: () => void): void {

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Cockpit } from './Cockpit';
 import { EnemyManager } from './EnemyManager';
 import { ProjectileManager } from './ProjectileManager';
+import { NotificationSystem } from './NotificationSystem';
 
 // ═══════════════════════════════════════════════════════════════
 //  HOW TO USE — add these three lines to Engine.ts:
@@ -16,6 +17,7 @@ import { ProjectileManager } from './ProjectileManager';
 //     this.combatSystem = new CombatSystem(
 //       this.scene, this.camera, this.cockpit,
 //       this.enemies, this.projectileManager,
+//       this.notifications,
 //     );
 //
 //  4. In animate():
@@ -48,7 +50,10 @@ class HealthSystem {
   private hitOverlay: HTMLElement;
   private deathEl:    HTMLElement;
 
-  constructor(private cockpit: Cockpit) {
+  constructor(
+    private cockpit: Cockpit,
+    private onDeathCallback?: () => void,
+  ) {
     this.buildHUD();
     this.hudFill    = document.getElementById('cs-hp-fill')!;
     this.hudLabel   = document.getElementById('cs-hp-label')!;
@@ -143,6 +148,7 @@ class HealthSystem {
     this.deathEl.classList.add('cs-visible');
     this.shakeTimer     = 3.0;
     this.shakeIntensity = 0.0006;
+    this.onDeathCallback?.();
   }
 
   private buildHUD(): void {
@@ -276,8 +282,16 @@ export class CombatSystem {
     private cockpit:           Cockpit,
     private enemyManager:      EnemyManager,
     private projectileManager: ProjectileManager,
+    private notifications:     NotificationSystem,
   ) {
-    this.health = new HealthSystem(cockpit);
+    this.health = new HealthSystem(cockpit, () => {
+      this.notifications.show({
+        type:     'warn',
+        title:    'SHIP DESTROYED',
+        msg:      'Hull integrity lost — mission failed',
+        duration: 8000,
+      });
+    });
 
     // Enemy bullet: glowing orange capsule
     this.bulletGeo = new THREE.CylinderGeometry(2.5, 2.5, 28, 6);
@@ -493,7 +507,15 @@ export class CombatSystem {
         const dmg = s.isMissile ? this.MISSILE_DAMAGE : this.BULLET_DAMAGE;
         this.health.takeDamage(dmg);
         dead.push(s);
+
         console.log(`🎯 PLAYER HIT -${dmg} HP → ${this.health.hp}`);
+
+        this.notifications.show({
+          type:     s.isMissile ? 'warn' : 'info',
+          title:    s.isMissile ? 'MISSILE IMPACT' : 'HULL BREACH',
+          msg:      `−${dmg} integrity  ·  ${Math.round(this.health.hp)}% remaining`,
+          duration: 3000,
+        });
       }
     }
 
@@ -557,7 +579,15 @@ export class CombatSystem {
     this.cooldowns.delete(enemy.uuid);
     this.shootIntervals.delete(enemy.uuid);
     this.enemyManager.removeEnemy(enemy);
+
     console.log('💀 Enemy destroyed');
+
+    this.notifications.show({
+      type:     'kill',
+      title:    'BANDIT DOWN',
+      msg:      'Target eliminated',
+      duration: 3500,
+    });
   }
 
   private spawnExplosion(pos: THREE.Vector3): void {
