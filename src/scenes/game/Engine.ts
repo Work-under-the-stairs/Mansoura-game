@@ -160,6 +160,10 @@ export class Engine {
     if ((window as any).miniMap) {
       (window as any).miniMap.hideArrow();
     }
+
+    if (this.combatSystem) {
+      this.combatSystem.hideHUD();
+    }
   }
 
   public show(): void {

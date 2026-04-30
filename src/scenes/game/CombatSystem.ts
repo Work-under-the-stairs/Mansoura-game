@@ -322,6 +322,11 @@ export class CombatSystem {
     if (root) root.style.visibility = 'visible';
   }
 
+  public hideHUD(): void {
+    const root = document.getElementById('cs-hud-root');
+    if (root) root.style.visibility = 'hidden';
+  }
+
   public update(delta: number): void {
     this.health.update(delta);
     if (this.health.isDead) return;
