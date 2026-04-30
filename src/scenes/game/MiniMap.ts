@@ -32,6 +32,9 @@ export class MiniMap {
   // Current deviation to redraw arrow on demand
   private currentDeviation: number = 0;
 
+  // Resize listener reference (for cleanup)
+  private onResizeBound!: () => void;
+
   // Egypt Bounding Box
   private readonly EGYPT_BOUNDS = {
     minLat: 22,
@@ -88,8 +91,9 @@ export class MiniMap {
     // ── Arrow HUD ──────────────────────────────────────────────────────────
     this.arrowContainer = document.createElement('div');
     this.arrowCanvas    = document.createElement('canvas');
-    this.arrowCanvas.width  = 80;
-    this.arrowCanvas.height = 80;
+    const initialArrowSize      = this.getArrowSizePx();
+    this.arrowCanvas.width      = initialArrowSize;
+    this.arrowCanvas.height     = initialArrowSize;
     // CRITICAL: Ensure the canvas itself has the transition for smooth rotation
     this.arrowCanvas.style.transition = 'transform 0.05s linear';
     
@@ -110,6 +114,16 @@ export class MiniMap {
     this.arrowContainer.style.pointerEvents = 'auto';
     this.arrowContainer.style.cursor        = 'pointer';
 
+    // ── Responsive resize listener ─────────────────────────────────────────
+    this.onResizeBound = () => {
+      this.resizeArrow();
+      // If modal is open, re-open at new size
+      if (this.isModalOpen) {
+        this.openModal();
+      }
+    };
+    window.addEventListener('resize', this.onResizeBound);
+
     // ── Fullscreen Modal ───────────────────────────────────────────────────
     this.modalOverlay = document.createElement('div');
     this.modalCanvas  = document.createElement('canvas');
@@ -122,6 +136,14 @@ export class MiniMap {
 
     // DEBUG: Attach to window for manual testing
     (window as any).miniMap = this;
+  }
+
+  // ── Responsive sizing ────────────────────────────────────────────────────
+
+  /** Returns arrow container size in px: 11vmin, clamped 52px–110px */
+  private getArrowSizePx(): number {
+    const vmin = Math.min(window.innerWidth, window.innerHeight);
+    return Math.max(52, Math.min(110, Math.round(vmin * 0.11)));
   }
 
   // ── Container & Style Setup ──────────────────────────────────────────────
@@ -138,13 +160,17 @@ export class MiniMap {
   }
 
   private setupArrowContainer() {
-    const c = this.arrowContainer;
+    const c    = this.arrowContainer;
+    const size = this.getArrowSizePx();
+    // Offset from screen edge: 2.5vmin, min 12px
+    const offset = Math.max(12, Math.round(Math.min(window.innerWidth, window.innerHeight) * 0.025));
+
     c.id = 'game-arrow-hud';
     c.style.position        = 'fixed';
-    c.style.top             = '20px';
-    c.style.left            = '20px';
-    c.style.width           = '80px';
-    c.style.height          = '80px';
+    c.style.top             = `${offset}px`;
+    c.style.left            = `${offset}px`;
+    c.style.width           = `${size}px`;
+    c.style.height          = `${size}px`;
     c.style.zIndex          = '99999';
     c.style.borderRadius    = '50%';
     c.style.background      = 'radial-gradient(circle at 35% 35%, rgba(60,20,20,0.95), rgba(25,5,5,0.98))';
@@ -164,6 +190,22 @@ export class MiniMap {
     });
   }
 
+  /** Reapplies responsive size to the arrow container + canvas after a resize */
+  private resizeArrow(): void {
+    const size   = this.getArrowSizePx();
+    const offset = Math.max(12, Math.round(Math.min(window.innerWidth, window.innerHeight) * 0.025));
+    const c      = this.arrowContainer;
+    c.style.width  = `${size}px`;
+    c.style.height = `${size}px`;
+    c.style.top    = `${offset}px`;
+    c.style.left   = `${offset}px`;
+
+    // Resize the backing canvas and redraw arrow
+    this.arrowCanvas.width  = size;
+    this.arrowCanvas.height = size;
+    this.drawArrow(this.currentDeviation);
+  }
+
   private setupModal() {
     const o = this.modalOverlay;
     o.id                    = 'game-minimap-modal';
@@ -179,13 +221,14 @@ export class MiniMap {
     o.style.cursor          = 'pointer';
 
     const title = document.createElement('div');
+    title.id = 'game-minimap-modal-title';
     title.textContent = '◈  TACTICAL MAP  ◈';
     title.style.cssText = `
       color: rgba(255,80,80,0.9);
       font-family: 'Courier New', monospace;
-      font-size: 13px;
-      letter-spacing: 6px;
-      margin-bottom: 16px;
+      font-size: clamp(10px, 2vmin, 16px);
+      letter-spacing: clamp(3px, 1vmin, 8px);
+      margin-bottom: clamp(8px, 2vmin, 20px);
       text-shadow: 0 0 12px rgba(220,30,30,0.8);
     `;
     o.appendChild(title);
@@ -208,9 +251,9 @@ export class MiniMap {
     hint.style.cssText = `
       color: rgba(255,255,255,0.35);
       font-family: 'Courier New', monospace;
-      font-size: 11px;
-      letter-spacing: 3px;
-      margin-top: 14px;
+      font-size: clamp(9px, 1.5vmin, 13px);
+      letter-spacing: clamp(2px, 0.8vmin, 5px);
+      margin-top: clamp(8px, 2vmin, 18px);
     `;
     o.appendChild(hint);
 
@@ -224,7 +267,8 @@ export class MiniMap {
     const ctx = this.arrowCtx;
     const cx  = c.width  / 2;
     const cy  = c.height / 2;
-    const size = 26;
+    // Arrow size = 32% of canvas width so it scales with any canvas size
+    const size = c.width * 0.32;
 
     ctx.clearRect(0, 0, c.width, c.height);
 
@@ -263,7 +307,9 @@ export class MiniMap {
   // ── Modal Open / Close ───────────────────────────────────────────────────
 
   private openModal() {
-    const size = Math.floor(Math.min(window.innerWidth, window.innerHeight) * 0.8);
+    const vmin    = Math.min(window.innerWidth, window.innerHeight);
+    const ratio   = vmin < 500 ? 0.90 : 0.80;   // 90% on small/mobile, 80% on desktop
+    const size    = Math.floor(vmin * ratio);
     this.modalCanvas.width  = size;
     this.modalCanvas.height = size;
     this.isModalOpen = true;
@@ -346,8 +392,9 @@ export class MiniMap {
   }
 
   public dispose() {
-    if (this.container?.parentNode)    this.container.parentNode.removeChild(this.container);
+    window.removeEventListener('resize', this.onResizeBound);
+    if (this.container?.parentNode)      this.container.parentNode.removeChild(this.container);
     if (this.arrowContainer?.parentNode) this.arrowContainer.parentNode.removeChild(this.arrowContainer);
-    if (this.modalOverlay?.parentNode) this.modalOverlay.parentNode.removeChild(this.modalOverlay);
+    if (this.modalOverlay?.parentNode)   this.modalOverlay.parentNode.removeChild(this.modalOverlay);
   }
 }
