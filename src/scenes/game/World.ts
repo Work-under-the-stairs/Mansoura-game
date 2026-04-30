@@ -4,7 +4,6 @@ import { MiniMap } from './MiniMap';
 
 export interface WorldOptions {
   skyExrUrl?: string;
-  mapImageUrl?: string; // Path to the map image
 }
 
 export class World {
@@ -16,29 +15,15 @@ export class World {
   private sunLight!: THREE.DirectionalLight;
   private fillLight!: THREE.HemisphereLight;
   private renderer: THREE.WebGLRenderer | null = null;
-  private loadingManager: THREE.LoadingManager;
-
-  // MiniMap instance
-  private miniMap?: MiniMap;
 
   constructor(scene: THREE.Scene, loadingManager: THREE.LoadingManager, options: Partial<WorldOptions> = {}, renderer?: THREE.WebGLRenderer) {
     this.scene = scene;
     this.loadingManager = loadingManager;
-    this.options = options;
-    this.renderer = renderer ?? null;
+    this.options       = options;
+    this.renderer      = renderer ?? null;
 
     this.build();
     this.loadSkyEXR();
-    
-    // Initialize MiniMap if a URL is provided
-    // If no URL is provided, it will use a default path or show a fallback
-    const mapUrl = this.options.mapImageUrl || '/src/assets/egypt-map.png';
-    
-    this.miniMap = new MiniMap({
-      mapImageUrl: mapUrl,
-      width: 200,
-      height: 200
-    });
   }
 
   private loadSkyEXR(): void {
@@ -56,6 +41,7 @@ export class World {
         const envMap = pmrem.fromEquirectangular(texture).texture;
         this.scene.environment = envMap;
         this.scene.background = envMap;
+
         texture.dispose();
         pmrem.dispose();
       } catch (e) {
@@ -78,15 +64,14 @@ export class World {
     this.root.add(this.sunLight);
   }
 
-  public update(deltaTime: number, playerPosition?: THREE.Vector3): void {
+  public update(deltaTime: number): void {
     this.time += deltaTime;
-    if (this.miniMap && playerPosition) {
-      this.miniMap.updatePlayerPosition(playerPosition.x, playerPosition.z);
-    }
+    // You can add logic here to rotate the sky or update light intensity
   }
 
   public dispose(): void {
     this.scene.remove(this.root);
+    // Clear background and environment
     this.scene.background = null;
     this.scene.environment = null;
     if (this.miniMap) {
