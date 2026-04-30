@@ -12,10 +12,9 @@ const COMBAT_DISTANCE = 15_000;
 
 /** 
  * Spread for spawning. 
- * Reduced Y spread to make them appear at a "smaller height" (lower elevation).
+ * Only horizontal spread — enemies match cockpit height exactly.
  */
 const SPAWN_SPREAD_X = 10_000;
-const SPAWN_SPREAD_Y = 1_000; 
 
 /** Visual scale constants */
 const BASE_SCALE       = 160;
@@ -91,22 +90,26 @@ export class EnemyManager {
         this._right.setFromMatrixColumn(this.cockpit.model.matrixWorld, 0).normalize();
         this._up.setFromMatrixColumn(this.cockpit.model.matrixWorld, 1).normalize();
 
-        // Random horizontal offset, fixed downward vertical offset
-        const offsetX = (Math.random() * 2 - 1) * SPAWN_SPREAD_X;
-        const offsetY = -2000 - (Math.random() * SPAWN_SPREAD_Y); // Always below cockpit
+        // Divide the spread into equal slots and pick the one for this enemy index,
+        // then add a small random jitter (±20 % of slot width) so they don't look robotic.
+        const slotWidth = (SPAWN_SPREAD_X * 2) / this.TOTAL_ENEMIES;
+        const slotStart = -SPAWN_SPREAD_X + this.spawnIndex * slotWidth;
+        const jitter    = (Math.random() * 2 - 1) * slotWidth * 0.2;
+        const offsetX   = slotStart + slotWidth * 0.5 + jitter;
 
         this._spawnOrigin
             .copy(this._cockpitPos)
             .addScaledVector(this._forward, SPAWN_DISTANCE)
-            .addScaledVector(this._right, offsetX)
-            .addScaledVector(this._up, offsetY);
+            .addScaledVector(this._right, offsetX);
+
+        // Lock world-Y to cockpit so enemies are at the same height
+        this._spawnOrigin.y = this._cockpitPos.y;
 
         const enemy = this.model.clone(true);
         enemy.position.copy(this._spawnOrigin);
 
-        // Save relative offsets to maintain them during follow
+        // Save only the horizontal offset — vertical is always derived from cockpit live
         enemy.userData.offsetX = offsetX;
-        enemy.userData.offsetY = offsetY;
         
         // Initial look at cockpit
         enemy.lookAt(this._cockpitPos);
@@ -155,22 +158,25 @@ export class EnemyManager {
             for (let i = 0; i < this.enemies.length; i++) {
                 const enemy = this.enemies[i];
                 
-                // Target position = Cockpit + Forward Distance + Lateral Offset + Vertical Offset
-                this._targetPos.copy(this._cockpitPos)
+                // Target position = Cockpit + Forward Distance + Lateral Offset
+                // World Y is taken directly from cockpit so height always matches
+                this._targetPos
+                    .copy(this._cockpitPos)
                     .addScaledVector(this._forward, COMBAT_DISTANCE)
-                    .addScaledVector(this._right, enemy.userData.offsetX)
-                    .addScaledVector(this._up, enemy.userData.offsetY);
+                    .addScaledVector(this._right, enemy.userData.offsetX);
+
+                // Override Y so enemies track cockpit height in world space,
+                // regardless of pitch / roll of the cockpit's local up axis
+                this._targetPos.y = this._cockpitPos.y;
 
                 // Smoothly follow the target position
-                // Higher lerp factor for tighter following
                 enemy.position.lerp(this._targetPos, delta * 3); 
 
                 // Face the cockpit directly
                 enemy.lookAt(this._cockpitPos);
                 enemy.rotateY(Math.PI / 2);
 
-                // Stable scaling: since they stay at COMBAT_DISTANCE, 
-                // we use a fixed scale based on that distance.
+                // Stable scaling based on combat distance ratio
                 const distRatio = THREE.MathUtils.clamp(COMBAT_DISTANCE / SPAWN_DISTANCE, 0, 1);
                 const scaleFactor = THREE.MathUtils.lerp(MAX_SCALE_FACTOR, MIN_SCALE_FACTOR, distRatio);
                 enemy.scale.setScalar(BASE_SCALE * scaleFactor);

@@ -140,6 +140,11 @@ export class Engine {
 
     const mobileControls = document.getElementById('mobile-controls');
     if (mobileControls) mobileControls.style.display = 'none';
+
+    // Hide MiniMap arrow when cockpit is hidden
+    if ((window as any).miniMap) {
+      (window as any).miniMap.hideArrow();
+    }
   }
 
   public show(): void {
@@ -148,6 +153,11 @@ export class Engine {
 
     const mobileControls = document.getElementById('mobile-controls');
     if (mobileControls) mobileControls.style.display = '';
+
+    // Show MiniMap arrow when cockpit is shown
+    if ((window as any).miniMap) {
+      (window as any).miniMap.showArrow();
+    }
   }
 
   // =====================
@@ -199,7 +209,7 @@ export class Engine {
     const delta = this.clock.getDelta();
 
     if (this.cockpit) this.cockpit.update(delta);
-    if (this.world)   this.world.update(delta);
+    if (this.world)   this.world.update(delta, this.cockpit.model?.position, this.cockpit.model ?? undefined);
     if (this.enemies) this.enemies.update(delta);
     this.projectileManager.update(delta);
     this.combatSystem.update(delta);
