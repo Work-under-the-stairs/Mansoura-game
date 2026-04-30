@@ -160,17 +160,17 @@ export class Engine {
     if (this.combatSystem){
       this.combatSystem.showHUD();
     }
-    this.enterFullscreen();
+    // this.enterFullscreen();
   }
 
-  private enterFullscreen(): void {
-    const el = document.documentElement;
-    if (el.requestFullscreen) {
-      el.requestFullscreen();
-    } else if ((el as any).webkitRequestFullscreen) {
-      (el as any).webkitRequestFullscreen(); // Safari/iOS
-    }
-  }
+  // private enterFullscreen(): void {
+  //   const el = document.documentElement;
+  //   if (el.requestFullscreen) {
+  //     el.requestFullscreen();
+  //   } else if ((el as any).webkitRequestFullscreen) {
+  //     (el as any).webkitRequestFullscreen(); // Safari/iOS
+  //   }
+  // }
 
   // =====================
   //  Lights & environment

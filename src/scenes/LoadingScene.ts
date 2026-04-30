@@ -112,9 +112,31 @@ export class LoadingScene {
 
     document.body.appendChild(startScreen);
 
+    // const unlock = () => {
+    //   // Start music on user gesture — guaranteed to work
+    //   this.initMusic();
+
+    //   // Fade out tap screen
+    //   startScreen.style.transition = 'opacity 0.6s ease';
+    //   startScreen.style.opacity = '0';
+    //   setTimeout(() => startScreen.remove(), 700);
+
+    //   startScreen.removeEventListener('click', unlock);
+    //   startScreen.removeEventListener('touchstart', unlock);
+    // };
     const unlock = () => {
-      // Start music on user gesture — guaranteed to work
       this.initMusic();
+
+      // Fullscreen بس على الموبايل
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
+      if (isMobile) {
+        const el = document.documentElement;
+        if (el.requestFullscreen) {
+          el.requestFullscreen();
+        } else if ((el as any).webkitRequestFullscreen) {
+          (el as any).webkitRequestFullscreen();
+        }
+      }
 
       // Fade out tap screen
       startScreen.style.transition = 'opacity 0.6s ease';
