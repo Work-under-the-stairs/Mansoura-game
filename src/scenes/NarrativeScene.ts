@@ -312,7 +312,7 @@ export class NarrativeScene {
         }
         #ns-text-content { display: block; width: 100%; white-space: pre-wrap; word-break: break-word; }
         #ns-action-btn {
-          position: absolute; bottom: 25%; left: 50%; transform: translateX(-50%);
+          position: absolute; bottom: 20%; left: 50%; transform: translateX(-50%);
           z-index: 20; font-family: 'Amiri', serif; font-size: clamp(0.85rem, 1.2vw, 1.1rem);
           color: #2b1b0a; background: rgba(205,170,100,0.4); border: 2px solid #8b6914;
           border-radius: 8px; padding: 8px 30px; cursor: pointer; transition: all 0.2s;
