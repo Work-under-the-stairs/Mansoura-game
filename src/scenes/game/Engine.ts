@@ -8,7 +8,7 @@ import { LoadingScene } from '../LoadingScene';
 import { ProjectileManager } from './ProjectileManager';
 import { CombatSystem } from './CombatSystem';
 import { NotificationSystem } from './NotificationSystem';
-
+import { applyMobileOptimizations } from '../../utils/MobileOptimizer';
 
 export class Engine {
   private loadingScene: LoadingScene;
@@ -80,15 +80,29 @@ export class Engine {
     this.controls       = new Controls();
     this.mobileControls = new MobileControls(this.container, this.controls);
 
+    // this.world = new World(
+    //   this.scene,
+    //   this.loadingManager,
+    //   {
+    //     skyExrUrl:       '/images/qwantani_afternoon_2k.exr',
+    //     terrainSize:     42000,
+    //     terrainSegments: 420,
+    //     riverWidth:      420,
+    //     cloudCount:      10,
+    //   },
+    //   this.renderer,
+    // );
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
+
     this.world = new World(
       this.scene,
       this.loadingManager,
       {
-        skyExrUrl:       '/images/qwantani_afternoon_2k.exr',
+        skyExrUrl:       isMobile ? '/images/qwantani_afternoon_1k.exr' : '/images/qwantani_afternoon_2k.exr',
         terrainSize:     42000,
-        terrainSegments: 420,
+        terrainSegments: isMobile ? 80 : 420,  // ← فرق ضخم جداً
         riverWidth:      420,
-        cloudCount:      10,
+        cloudCount:      isMobile ? 3 : 10,    // ← سحب أقل
       },
       this.renderer,
     );
@@ -119,6 +133,8 @@ export class Engine {
     window.addEventListener('resize', this.onWindowResize);
 
     this.hide();
+    applyMobileOptimizations(this.renderer, this.scene);
+
   }
 
   // =====================

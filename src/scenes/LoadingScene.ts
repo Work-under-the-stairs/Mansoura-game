@@ -132,24 +132,17 @@ export class LoadingScene {
       navigator.maxTouchPoints > 1 ||
       window.innerWidth < 1024;
       if (isMobile) {
-        // على الـ startScreen نفسه مش على documentElement
-        const el = startScreen as any;
-        if (el.requestFullscreen) {
-          el.requestFullscreen();
-        } else if (el.webkitRequestFullscreen) {
-          el.webkitRequestFullscreen();
-        }
+        const el = document.documentElement as any;
+        if (el.requestFullscreen) el.requestFullscreen();
+        else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
       }
 
       startScreen.style.transition = 'opacity 0.6s ease';
       startScreen.style.opacity = '0';
       setTimeout(() => startScreen.remove(), 700);
-
-      startScreen.removeEventListener('click', unlock);
-      // startScreen.removeEventListener('touchstart', unlock);
     };
-
-    startScreen.addEventListener('click', unlock);
+    startScreen.addEventListener('click', unlock, { once: true });
+    // startScreen.addEventListener('click', unlock);
     // startScreen.addEventListener('touchstart', unlock);
   }
 
