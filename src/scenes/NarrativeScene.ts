@@ -312,7 +312,7 @@ export class NarrativeScene {
         }
         #ns-text-content { display: block; width: 100%; white-space: pre-wrap; word-break: break-word; }
         #ns-action-btn {
-          position: absolute; bottom: 25%; left: 50%; transform: translateX(-50%);
+          position: absolute; bottom: 20%; left: 50%; transform: translateX(-50%);
           z-index: 20; font-family: 'Amiri', serif; font-size: clamp(0.85rem, 1.2vw, 1.1rem);
           color: #2b1b0a; background: rgba(205,170,100,0.4); border: 2px solid #8b6914;
           border-radius: 8px; padding: 8px 30px; cursor: pointer; transition: all 0.2s;
@@ -321,7 +321,7 @@ export class NarrativeScene {
         #ns-action-btn:hover { background: rgba(205,170,100,0.7); transform: translateX(-50%) scale(1.05); }
         @media (max-width: 768px) {
           #ns-text-container { top: clamp(25%, 5vw + 15%, 32%); width: clamp(160px, 52vw, 300px); font-size: clamp(0.6rem, 2.2vw, 0.85rem); }
-          #ns-action-btn { bottom: 25%; font-size: clamp(0.75rem, 3vw, 0.95rem); padding: 6px 22px; }
+          #ns-action-btn { bottom: 20%; font-size: clamp(0.75rem, 3vw, 0.95rem); padding: 6px 22px; }
         }
       </style>
       <div id="ns-bg"></div>
