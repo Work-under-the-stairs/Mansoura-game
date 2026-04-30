@@ -127,28 +127,30 @@ export class LoadingScene {
     const unlock = () => {
       this.initMusic();
 
-      // Fullscreen بس على الموبايل
-      const isMobile = /Android|iPhone|iPad|iPod|Touch/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1 || window.innerWidth < 1024;
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || 
+      /Android|iPhone|iPad|iPod|Touch/i.test(navigator.userAgent) ||
+      navigator.maxTouchPoints > 1 ||
+      window.innerWidth < 1024;
       if (isMobile) {
-        const el = document.documentElement;
+        // على الـ startScreen نفسه مش على documentElement
+        const el = startScreen as any;
         if (el.requestFullscreen) {
           el.requestFullscreen();
-        } else if ((el as any).webkitRequestFullscreen) {
-          (el as any).webkitRequestFullscreen();
+        } else if (el.webkitRequestFullscreen) {
+          el.webkitRequestFullscreen();
         }
       }
 
-      // Fade out tap screen
       startScreen.style.transition = 'opacity 0.6s ease';
       startScreen.style.opacity = '0';
       setTimeout(() => startScreen.remove(), 700);
 
       startScreen.removeEventListener('click', unlock);
-      startScreen.removeEventListener('touchstart', unlock);
+      // startScreen.removeEventListener('touchstart', unlock);
     };
 
     startScreen.addEventListener('click', unlock);
-    startScreen.addEventListener('touchstart', unlock);
+    // startScreen.addEventListener('touchstart', unlock);
   }
 
   // =============================
@@ -156,7 +158,7 @@ export class LoadingScene {
   // =============================
   private initMusic(): void {
     try {
-      this.audio = new Audio('/sounds/1.MainTheme-320bit(chosic.com).m3');
+      this.audio = new Audio('/sounds/1.MainTheme-320bit(chosic.com).mp3');
       this.audio.loop = true;
       this.audio.volume = 0;
 
