@@ -24,10 +24,12 @@ export class Engine {
   private notifications: NotificationSystem;
 
   private container: HTMLDivElement;
-  private clock = new THREE.Clock();
+  // private clock = new THREE.Clock();
+  private clock = new THREE.Timer();
   private animationFrameId = 0;
   private mobileControls: MobileControls;
   private projectileManager: ProjectileManager;
+  private readonly isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
 
   constructor(loadingScene: LoadingScene) {
     this.loadingScene   = loadingScene;
@@ -58,9 +60,11 @@ export class Engine {
     document.body.appendChild(this.container);
 
     this.renderer = new THREE.WebGLRenderer({
-      antialias:              true,
+      // antialias:              true,
+      antialias:              !this.isMobile,
       powerPreference:        'high-performance',
-      logarithmicDepthBuffer: true,
+      // logarithmicDepthBuffer: true,
+      logarithmicDepthBuffer: !this.isMobile,
     });
 
     this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -92,17 +96,16 @@ export class Engine {
     //   },
     //   this.renderer,
     // );
-    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
 
     this.world = new World(
       this.scene,
       this.loadingManager,
       {
-        skyExrUrl:       isMobile ? '/images/qwantani_afternoon_1k.exr' : '/images/qwantani_afternoon_2k.exr',
+        skyExrUrl:       this.isMobile ? '/images/qwantani_afternoon_1k.exr' : '/images/qwantani_afternoon_2k.exr',
         terrainSize:     42000,
-        terrainSegments: isMobile ? 80 : 420,  // ← فرق ضخم جداً
+        terrainSegments: this.isMobile ? 80 : 420,  // ← فرق ضخم جداً
         riverWidth:      420,
-        cloudCount:      isMobile ? 3 : 10,    // ← سحب أقل
+        cloudCount:      this.isMobile ? 3 : 10,    // ← سحب أقل
       },
       this.renderer,
     );
@@ -130,10 +133,13 @@ export class Engine {
 
     this.setupLights();
     this.createEnvironment();
+
+    // if (isMobile) this.optimizeForMobile();
+    applyMobileOptimizations(this.renderer, this.scene);
+
     window.addEventListener('resize', this.onWindowResize);
 
     this.hide();
-    applyMobileOptimizations(this.renderer, this.scene);
 
   }
 
@@ -204,7 +210,11 @@ export class Engine {
     sunLight.position.set(-9000, 8500, -5000);
     sunLight.castShadow = true;
 
-    sunLight.shadow.mapSize.set(2048, 2048);
+    // sunLight.shadow.mapSize.set(2048, 2048);
+    sunLight.shadow.mapSize.set(
+      this.isMobile ? 512 : 2048,
+      this.isMobile ? 512 : 2048,
+    );
     sunLight.shadow.camera.left   = -20000;
     sunLight.shadow.camera.right  =  20000;
     sunLight.shadow.camera.top    =  20000;
@@ -218,7 +228,12 @@ export class Engine {
   }
 
   private createEnvironment(): void {
-    this.scene.fog = new THREE.Fog(0xcad9e6, 9000, 52000);
+    // this.scene.fog = new THREE.Fog(0xcad9e6, 9000, 52000);
+    // this.scene.fog = new THREE.Fog(
+    //   0xcad9e6,
+    //   this.isMobile ? 5000 : 9000,
+    //   this.isMobile ? 25000 : 52000,
+    // );
   }
 
   // =====================
@@ -235,10 +250,46 @@ export class Engine {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
   };
 
+  // private fpsDisplay: HTMLElement | null = null;
+  // private frameCount = 0;
+  // private fpsTimer = 0;
+
+  private mobileOptimized = false;
+
+  // private initFPSCounter(): void {
+  //   const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
+  //   if (!isMobile) return;
+    
+  //   this.fpsDisplay = document.createElement('div');
+  //   this.fpsDisplay.style.cssText = `
+  //     position: fixed; top: 50px; right: 10px;
+  //     color: lime; font-size: 16px; font-family: monospace;
+  //     z-index: 99999; background: rgba(0,0,0,0.5);
+  //     padding: 4px 8px; border-radius: 4px;
+  //   `;
+  //   document.body.appendChild(this.fpsDisplay);
+  // }
+
   private animate = (): void => {
     this.animationFrameId = window.requestAnimationFrame(this.animate);
 
+    this.clock.update(); // ← ضيفي السطر ده
+
     const delta = this.clock.getDelta();
+
+  
+
+    // // FPS counter
+    // this.frameCount++;
+    // this.fpsTimer += delta;
+    // if (this.fpsTimer >= 1.0) {
+    //   if (this.fpsDisplay) this.fpsDisplay.textContent = `${this.frameCount} FPS`;
+    //   this.frameCount = 0;
+    //   this.fpsTimer = 0;
+    // }
+    // this.animationFrameId = window.requestAnimationFrame(this.animate);
+
+    // const delta = this.clock.getDelta();
 
     if (this.cockpit) this.cockpit.update(delta);
     if (this.world)   this.world.update(delta, this.cockpit.model?.position, this.cockpit.model ?? undefined);
@@ -247,6 +298,11 @@ export class Engine {
     this.combatSystem.update(delta);
 
     this.renderer.render(this.scene, this.camera);
+
+    if (!this.mobileOptimized && this.cockpit.model) {
+      this.optimizeForMobile();
+      this.mobileOptimized = true;
+    }
   };
 
   public destroy(): void {
@@ -268,5 +324,32 @@ export class Engine {
 
   public onReady(callback: () => void): void {
     this.loadingScene.onComplete(callback);
+  }
+  private optimizeForMobile(): void {
+    // const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
+    if (!this.isMobile) return;
+
+    this.scene.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (!mesh.isMesh) return;
+
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const mat of mats) {
+        const m = mat as THREE.MeshStandardMaterial;
+        if (!m.isMeshStandardMaterial) continue;
+
+        // شيل normal map — أكبر توفير في GPU
+        if (m.normalMap) {
+          m.normalMap.dispose();
+          m.normalMap = null;
+        }
+        // شيل occlusion map
+        if (m.aoMap) {
+          m.aoMap.dispose();
+          m.aoMap = null;
+        }
+        m.needsUpdate = true;
+      }
+    });
   }
 }
