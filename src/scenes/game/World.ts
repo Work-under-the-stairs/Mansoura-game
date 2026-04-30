@@ -41,7 +41,7 @@ export class World {
     this.build();
     this.loadSkyEXR();
 
-    const mapUrl = this.options.mapImageUrl || '/src/assets/egypt-map.png';
+    const mapUrl = this.options.mapImageUrl || '/images/egypt-map.png';
 
     this.miniMap = new MiniMap({
       mapImageUrl: mapUrl,

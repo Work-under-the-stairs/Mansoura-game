@@ -128,7 +128,7 @@ export class LoadingScene {
       this.initMusic();
 
       // Fullscreen بس على الموبايل
-      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
+      const isMobile = /Android|iPhone|iPad|iPod|Touch/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1 || window.innerWidth < 1024;
       if (isMobile) {
         const el = document.documentElement;
         if (el.requestFullscreen) {
