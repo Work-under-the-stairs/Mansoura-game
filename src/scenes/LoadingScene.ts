@@ -2,10 +2,10 @@ import * as THREE from 'three';
 
 export class LoadingScene {
   private container: HTMLElement;
-  private overlay: HTMLElement;
-  private progressBar: HTMLElement;
-  private progressText: HTMLElement;
-  private tipText: HTMLElement;
+  private overlay: HTMLElement | null = null;
+  private progressBar: HTMLElement | null = null;
+  private progressText: HTMLElement | null = null;
+  private tipText: HTMLElement | null = null;
   private diamonds: NodeListOf<HTMLElement> | null = null;
   private onCompleteCallback: (() => void) | null = null;
 
@@ -20,13 +20,8 @@ export class LoadingScene {
   ];
 
   constructor(container: HTMLElement) {
-    this.showTapToStart(); // 👆 show tap screen first
     this.container = container;
-    this.overlay = this.createOverlay();
-    this.progressBar = this.overlay.querySelector('#ls-fill') as HTMLElement;
-    this.progressText = this.overlay.querySelector('#ls-pct') as HTMLElement;
-    this.tipText = this.overlay.querySelector('#ls-tip') as HTMLElement;
-    this.diamonds = this.overlay.querySelectorAll('.ls-diamond');
+    this.showTapToStart(); // 👆 show tap screen first, overlay created AFTER click
   }
 
   // =============================
@@ -113,8 +108,15 @@ export class LoadingScene {
     document.body.appendChild(startScreen);
 
     const unlock = () => {
-      // Start music on user gesture — guaranteed to work
+      // ✅ Start music on user gesture
       this.initMusic();
+
+      // ✅ NOW create the loading overlay after click
+      this.overlay = this.createOverlay();
+      this.progressBar = this.overlay.querySelector('#ls-fill') as HTMLElement;
+      this.progressText = this.overlay.querySelector('#ls-pct') as HTMLElement;
+      this.tipText = this.overlay.querySelector('#ls-tip') as HTMLElement;
+      this.diamonds = this.overlay.querySelectorAll('.ls-diamond');
 
       // Fade out tap screen
       startScreen.style.transition = 'opacity 0.6s ease';
@@ -134,10 +136,9 @@ export class LoadingScene {
   // =============================
   private initMusic(): void {
     try {
-      this.audio = new Audio('/sounds/1.MainTheme-320bit(chosic.com).m3');
+      this.audio = new Audio('/sounds/1.MainTheme-320bit(chosic.com).mp3');
       this.audio.loop = true;
       this.audio.volume = 0;
-
       this.audio.play().then(() => {
         this.fadeIn();
       }).catch((err) => {
@@ -387,6 +388,8 @@ export class LoadingScene {
   }
 
   public updateProgress(progress: number): void {
+    if (!this.progressBar || !this.progressText || !this.tipText) return;
+
     const clamped = Math.min(Math.max(progress, 0), 100);
 
     this.progressBar.style.width = clamped + '%';
@@ -419,13 +422,25 @@ export class LoadingScene {
     };
   }
 
-  public hide(): void {
-    this.fadeOut(); // 🎵 stop music
+  public setVolume(volume: number): void {
+    if (this.audio) {
+      this.audio.volume = Math.min(Math.max(volume, 0), 1);
+    }
+  }
 
-    this.overlay.classList.add('fade-out');
+  public getAudio(): HTMLAudioElement | null {
+    console.log('Audio context state:', this.audio);
+    return this.audio;
+  }
+
+  public hide(): void {
+    if (!this.overlay) return;
+
+    // this.fadeOut();
+    // this.overlay.classList.add('fade-out');
 
     setTimeout(() => {
-      this.overlay.remove();
+      this.overlay?.remove();
       if (this.onCompleteCallback) this.onCompleteCallback();
     }, 800);
   }
