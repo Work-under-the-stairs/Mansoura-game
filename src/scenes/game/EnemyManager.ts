@@ -21,6 +21,12 @@ const BASE_SCALE       = 160;
 const MIN_SCALE_FACTOR = 0.5;
 const MAX_SCALE_FACTOR = 2.5;
 
+/**
+ * How many seconds after spawning before an enemy starts tracking the cockpit.
+ * During this window the enemy holds its spawn position.
+ */
+const LAG_DURATION = 9;
+
 // ────────────────────────────────────────────────────────────────────────────
 
 export class EnemyManager {
@@ -110,6 +116,8 @@ export class EnemyManager {
 
         // Save only the horizontal offset — vertical is always derived from cockpit live
         enemy.userData.offsetX = offsetX;
+        // Record spawn time so tracking is delayed by LAG_DURATION seconds
+        enemy.userData.spawnTime = this.elapsedTime;
         
         // Initial look at cockpit
         enemy.lookAt(this._cockpitPos);
@@ -157,6 +165,10 @@ export class EnemyManager {
 
             for (let i = 0; i < this.enemies.length; i++) {
                 const enemy = this.enemies[i];
+
+                // Skip tracking until the lag window has passed
+                const age = this.elapsedTime - (enemy.userData.spawnTime as number ?? 0);
+                if (age < LAG_DURATION) continue;
                 
                 // Target position = Cockpit + Forward Distance + Lateral Offset
                 // World Y is taken directly from cockpit so height always matches
@@ -170,7 +182,7 @@ export class EnemyManager {
                 this._targetPos.y = this._cockpitPos.y;
 
                 // Smoothly follow the target position
-                enemy.position.lerp(this._targetPos, delta * 3); 
+                enemy.position.lerp(this._targetPos, delta * 1.2); 
 
                 // Face the cockpit directly
                 enemy.lookAt(this._cockpitPos);
