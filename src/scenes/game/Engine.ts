@@ -116,7 +116,6 @@ export class Engine {
 
     this.setupLights();
     this.createEnvironment();
-
     window.addEventListener('resize', this.onWindowResize);
 
     this.hide();
@@ -157,6 +156,9 @@ export class Engine {
     // Show MiniMap arrow when cockpit is shown
     if ((window as any).miniMap) {
       (window as any).miniMap.showArrow();
+    }
+    if (this.combatSystem){
+      this.combatSystem.showHUD();
     }
   }
 

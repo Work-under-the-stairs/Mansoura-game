@@ -143,6 +143,8 @@ class HealthSystem {
     setTimeout(() => { this.hitOverlay.style.opacity = '0'; }, 100);
   }
 
+
+
   private onDeath(): void {
     this.isDead = true;
     this.deathEl.classList.add('cs-visible');
@@ -163,6 +165,7 @@ class HealthSystem {
           z-index: 999; pointer-events: none;
           display: flex; flex-direction: column;
           align-items: center; gap: 5px;
+          visibility: hidden;
         }
         #cs-hp-label {
           font-family: 'Courier New', monospace;
@@ -221,6 +224,8 @@ class HealthSystem {
     `;
     document.body.appendChild(root);
   }
+
+
 }
 
 
@@ -312,6 +317,10 @@ export class CombatSystem {
   }
 
   // ── Public update — call from Engine.animate() ────────────────
+  public showHUD(): void {
+    const root = document.getElementById('cs-hud-root');
+    if (root) root.style.visibility = 'visible';
+  }
 
   public update(delta: number): void {
     this.health.update(delta);
