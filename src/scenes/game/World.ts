@@ -4,7 +4,6 @@ import { MiniMap } from './MiniMap';
 
 export interface WorldOptions {
   skyExrUrl?: string;
-  mapImageUrl?: string;
 }
 
 export class World {
@@ -16,41 +15,15 @@ export class World {
   private sunLight!: THREE.DirectionalLight;
   private fillLight!: THREE.HemisphereLight;
   private renderer: THREE.WebGLRenderer | null = null;
-  private loadingManager: THREE.LoadingManager;
 
-  private miniMap?: MiniMap;
-
-  // Whether we've already captured the spawn heading
-  private headingReferenceSet = false;
-
-  // Reusable objects — avoids per-frame allocation
-  private readonly _quat   = new THREE.Quaternion();
-  private readonly _euler  = new THREE.Euler();
-
-  constructor(
-    scene: THREE.Scene,
-    loadingManager: THREE.LoadingManager,
-    options: Partial<WorldOptions> = {},
-    renderer?: THREE.WebGLRenderer
-  ) {
-    this.scene         = scene;
+  constructor(scene: THREE.Scene, loadingManager: THREE.LoadingManager, options: Partial<WorldOptions> = {}, renderer?: THREE.WebGLRenderer) {
+    this.scene = scene;
     this.loadingManager = loadingManager;
     this.options       = options;
     this.renderer      = renderer ?? null;
 
     this.build();
     this.loadSkyEXR();
-
-    const mapUrl = this.options.mapImageUrl || '/src/assets/egypt-map.png';
-
-    this.miniMap = new MiniMap({
-      mapImageUrl: mapUrl,
-      width:  200,
-      height: 200
-    });
-    
-    // DEBUG: Attach world to window
-    (window as any).gameWorld = this;
   }
 
   private loadSkyEXR(): void {
@@ -67,7 +40,8 @@ export class World {
         pmrem.compileEquirectangularShader();
         const envMap = pmrem.fromEquirectangular(texture).texture;
         this.scene.environment = envMap;
-        this.scene.background  = envMap;
+        this.scene.background = envMap;
+
         texture.dispose();
         pmrem.dispose();
       } catch (e) {
@@ -85,55 +59,20 @@ export class World {
   private createEnvironment(): void {
     this.fillLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.0);
     this.root.add(this.fillLight);
-
     this.sunLight = new THREE.DirectionalLight(0xffffff, 2.0);
     this.sunLight.position.set(100, 200, 100);
     this.root.add(this.sunLight);
   }
 
-  /**
-   * Call each frame.
-   *
-   * @param deltaTime      Seconds since last frame.
-   * @param playerPosition World-space position of the cockpit.
-   * @param cockpitObject  The cockpit THREE.Object3D whose orientation defines
-   *                       the heading.
-   */
-  public update(
-    deltaTime: number,
-    playerPosition?: THREE.Vector3,
-    cockpitObject?: THREE.Object3D
-  ): void {
+  public update(deltaTime: number): void {
     this.time += deltaTime;
-
-    if (!this.miniMap) return;
-
-    // ── Position ────────────────────────────────────────────────────────────
-    if (playerPosition) {
-      this.miniMap.updatePlayerPosition(playerPosition.x, playerPosition.z);
-    }
-
-    // ── Heading ─────────────────────────────────────────────────────────────
-    if (cockpitObject) {
-      cockpitObject.updateMatrixWorld(true);
-      cockpitObject.getWorldQuaternion(this._quat);
-      this._euler.setFromQuaternion(this._quat, 'YXZ');
-      const headingRad = this._euler.y;
-      this.miniMap.updateHeading(headingRad);
-    } else {
-      // cockpitObject was NOT passed — arrow will never move!
-      // Check your main loop: world.update(delta, position, cockpit.model)
-      console.warn('[World] cockpitObject is missing from world.update() call!');
-    }
-  }
-
-  public resetHeadingReference(): void {
-    this.headingReferenceSet = false;
+    // You can add logic here to rotate the sky or update light intensity
   }
 
   public dispose(): void {
     this.scene.remove(this.root);
-    this.scene.background  = null;
+    // Clear background and environment
+    this.scene.background = null;
     this.scene.environment = null;
     if (this.miniMap) {
       this.miniMap.dispose();
