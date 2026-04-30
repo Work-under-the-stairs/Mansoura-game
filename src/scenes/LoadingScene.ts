@@ -107,6 +107,18 @@ export class LoadingScene {
 
     document.body.appendChild(startScreen);
 
+    // const unlock = () => {
+    //   // Start music on user gesture — guaranteed to work
+    //   this.initMusic();
+
+    //   // Fade out tap screen
+    //   startScreen.style.transition = 'opacity 0.6s ease';
+    //   startScreen.style.opacity = '0';
+    //   setTimeout(() => startScreen.remove(), 700);
+
+    //   startScreen.removeEventListener('click', unlock);
+    //   startScreen.removeEventListener('touchstart', unlock);
+    // };
     const unlock = () => {
       // ✅ Start music on user gesture
       this.initMusic();
@@ -119,16 +131,24 @@ export class LoadingScene {
       this.diamonds = this.overlay.querySelectorAll('.ls-diamond');
 
       // Fade out tap screen
+      this.initMusic();
+
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || 
+      /Android|iPhone|iPad|iPod|Touch/i.test(navigator.userAgent) ||
+      navigator.maxTouchPoints > 1 ||
+      window.innerWidth < 1024;
+      if (isMobile) {
+        const el = document.documentElement as any;
+        if (el.requestFullscreen) el.requestFullscreen();
+        else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+      }
       startScreen.style.transition = 'opacity 0.6s ease';
       startScreen.style.opacity = '0';
       setTimeout(() => startScreen.remove(), 700);
-
-      startScreen.removeEventListener('click', unlock);
-      startScreen.removeEventListener('touchstart', unlock);
     };
-
-    startScreen.addEventListener('click', unlock);
-    startScreen.addEventListener('touchstart', unlock);
+    startScreen.addEventListener('click', unlock, { once: true });
+    // startScreen.addEventListener('click', unlock);
+    // startScreen.addEventListener('touchstart', unlock);
   }
 
   // =============================

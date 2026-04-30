@@ -8,7 +8,7 @@ import { LoadingScene } from '../LoadingScene';
 import { ProjectileManager } from './ProjectileManager';
 import { CombatSystem } from './CombatSystem';
 import { NotificationSystem } from './NotificationSystem';
-
+import { applyMobileOptimizations } from '../../utils/MobileOptimizer';
 
 export class Engine {
   private loadingScene: LoadingScene;
@@ -80,15 +80,29 @@ export class Engine {
     this.controls       = new Controls();
     this.mobileControls = new MobileControls(this.container, this.controls);
 
+    // this.world = new World(
+    //   this.scene,
+    //   this.loadingManager,
+    //   {
+    //     skyExrUrl:       '/images/qwantani_afternoon_2k.exr',
+    //     terrainSize:     42000,
+    //     terrainSegments: 420,
+    //     riverWidth:      420,
+    //     cloudCount:      10,
+    //   },
+    //   this.renderer,
+    // );
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
+
     this.world = new World(
       this.scene,
       this.loadingManager,
       {
-        skyExrUrl:       '/images/qwantani_afternoon_2k.exr',
+        skyExrUrl:       isMobile ? '/images/qwantani_afternoon_1k.exr' : '/images/qwantani_afternoon_2k.exr',
         terrainSize:     42000,
-        terrainSegments: 420,
+        terrainSegments: isMobile ? 80 : 420,  // ← فرق ضخم جداً
         riverWidth:      420,
-        cloudCount:      10,
+        cloudCount:      isMobile ? 3 : 10,    // ← سحب أقل
       },
       this.renderer,
     );
@@ -116,10 +130,11 @@ export class Engine {
 
     this.setupLights();
     this.createEnvironment();
-
     window.addEventListener('resize', this.onWindowResize);
 
     this.hide();
+    applyMobileOptimizations(this.renderer, this.scene);
+
   }
 
   // =====================
@@ -140,6 +155,11 @@ export class Engine {
 
     const mobileControls = document.getElementById('mobile-controls');
     if (mobileControls) mobileControls.style.display = 'none';
+
+    // Hide MiniMap arrow when cockpit is hidden
+    if ((window as any).miniMap) {
+      (window as any).miniMap.hideArrow();
+    }
   }
 
   public show(): void {
@@ -148,7 +168,25 @@ export class Engine {
 
     const mobileControls = document.getElementById('mobile-controls');
     if (mobileControls) mobileControls.style.display = '';
+
+    // Show MiniMap arrow when cockpit is shown
+    if ((window as any).miniMap) {
+      (window as any).miniMap.showArrow();
+    }
+    if (this.combatSystem){
+      this.combatSystem.showHUD();
+    }
+    // this.enterFullscreen();
   }
+
+  // private enterFullscreen(): void {
+  //   const el = document.documentElement;
+  //   if (el.requestFullscreen) {
+  //     el.requestFullscreen();
+  //   } else if ((el as any).webkitRequestFullscreen) {
+  //     (el as any).webkitRequestFullscreen(); // Safari/iOS
+  //   }
+  // }
 
   // =====================
   //  Lights & environment
@@ -199,7 +237,7 @@ export class Engine {
     const delta = this.clock.getDelta();
 
     if (this.cockpit) this.cockpit.update(delta);
-    if (this.world)   this.world.update(delta);
+    if (this.world)   this.world.update(delta, this.cockpit.model?.position, this.cockpit.model ?? undefined);
     if (this.enemies) this.enemies.update(delta);
     this.projectileManager.update(delta);
     this.combatSystem.update(delta);

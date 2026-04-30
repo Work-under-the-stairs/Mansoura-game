@@ -40,7 +40,7 @@ export class Cockpit {
 
         loader.setDRACOLoader(dracoLoader);
 
-        loader.load('/models/cockpit2.glb', (gltf) => {
+        loader.load('/models/cockpitfinal.glb', (gltf) => {
             this.model = gltf.scene;
             this.scene.add(this.model);
 

@@ -21,7 +21,7 @@ export class MobileControls {
   }
 
   private detectMobile(): boolean {
-    return true
+    // return true
     return (
       /Android|iPhone|iPad|iPod|Touch/i.test(navigator.userAgent) ||
       navigator.maxTouchPoints > 1 ||
@@ -155,7 +155,7 @@ export class MobileControls {
 
     // Boost on top
     leftCluster.appendChild(this.makeButton('btn-boost', 'BOOST',
-      'public/images/boost.png',
+      '/images/boost.png',
       () => this.controls.keys['ShiftLeft'] = true,
       () => this.controls.keys['ShiftLeft'] = false,
     ));
@@ -164,12 +164,12 @@ export class MobileControls {
     const weaponRow = document.createElement('div');
     weaponRow.id = 'mobile-weapon-row';
     weaponRow.appendChild(this.makeButton('btn-machinegun', 'MACHINE GUN',
-      'public/images/bullet3.png',
+      '/images/bullet3.png',
       () => this.controls.keys['KeyZ'] = true,
       () => this.controls.keys['KeyZ'] = false,
     ));
     weaponRow.appendChild(this.makeButton('btn-missiles', 'MISSILES',
-      'public/images/missile.png',
+      '/images/missile.png',
       () => this.controls.keys['KeyX'] = true,
       () => this.controls.keys['KeyX'] = false,
     ));
