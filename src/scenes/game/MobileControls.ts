@@ -21,7 +21,7 @@ export class MobileControls {
   }
 
   private detectMobile(): boolean {
-    return true
+    // return true
     return (
       /Android|iPhone|iPad|iPod|Touch/i.test(navigator.userAgent) ||
       navigator.maxTouchPoints > 1 ||
