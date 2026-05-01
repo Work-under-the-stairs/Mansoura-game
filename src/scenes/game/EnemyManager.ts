@@ -62,7 +62,7 @@ export class EnemyManager {
     private loadModel(): void {
         const loader = new GLTFLoader();
         loader.load(
-            '/models/enemy.glb',
+            '/models/enemy2.glb',
             (gltf) => {
                 this.model = gltf.scene;
                 this.model.scale.setScalar(BASE_SCALE);

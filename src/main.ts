@@ -17,15 +17,16 @@ const loading = new LoadingScene(document.body);
 
 // Engine starts loading all assets immediately (silently, canvas is hidden)
 const gameEngine = new Engine(loading);
+
 // When all assets finish loading → show the main menu
 gameEngine.onReady(() => {
-  
   const menu = new MainMenuScene(document.body);
   menu.show();
+
   menu.onStart(() => {
-    loading.setVolume(0.05);
     const narrative = new NarrativeScene(document.body);
     narrative.show();
+
 
     narrative.onComplete(() => {
       // Only NOW reveal the game canvas and mobile controls
