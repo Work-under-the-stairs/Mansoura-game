@@ -24,8 +24,8 @@ export class Engine {
   private notifications: NotificationSystem;
 
   private container: HTMLDivElement;
-  private clock = new THREE.Clock();
-  // private clock = new THREE.Timer();
+  // private clock = new THREE.Clock();
+  private clock = new THREE.Timer();
   private animationFrameId = 0;
   private mobileControls: MobileControls;
   private projectileManager: ProjectileManager;
@@ -278,7 +278,7 @@ export class Engine {
   private animate = (): void => {
     this.animationFrameId = window.requestAnimationFrame(this.animate);
 
-    // this.clock.update(); // ← ضيفي السطر ده
+    this.clock.update(); // ← ضيفي السطر ده
 
     const delta = this.clock.getDelta();
 
