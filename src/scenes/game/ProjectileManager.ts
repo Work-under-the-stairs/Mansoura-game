@@ -195,6 +195,8 @@ export class ProjectileManager {
   private projectiles: Projectile[] = [];
   private smokePuffs:  SmokePuff[]  = [];
 
+  private readonly ssf: number;
+
   private readonly isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
   private readonly BULLET_SPEED   = 4800;
   private readonly BULLET_LIFE    = 1.6;
@@ -205,11 +207,20 @@ export class ProjectileManager {
   private readonly MISSILE_LIFE   = 8.0;
   // private readonly SMOKE_INTERVAL = 0.028;
   // private readonly SMOKE_INTERVAL = this.isMobile ? 0.15 : 0.028;
-  private readonly SMOKE_INTERVAL = this.isMobile ? 0.3 : 0.028;
+  private readonly SMOKE_INTERVAL = this.isMobile ? 0.8 : 0.028;
   // private readonly SMOKE_LIFE_MAX = 2.2;
-  private readonly SMOKE_LIFE_MAX = this.isMobile ? 1 : 2.2;
+  private readonly SMOKE_LIFE_MAX = this.isMobile ? 0.6 : 2.2;
 
-  constructor(private scene: THREE.Scene) {}
+  constructor(private scene: THREE.Scene) {
+      this.ssf = this.isMobile ? 1 : this.calcScreenScale();
+  }
+
+
+  private calcScreenScale(): number {
+    const ref = 390;
+    const dim = Math.max(window.innerWidth, window.innerHeight);
+    return Math.max(1.0, Math.sqrt(dim / ref));
+  }
 
   // ── PUBLIC ──────────────────────────────────
 
@@ -247,6 +258,30 @@ export class ProjectileManager {
     const anchor = new THREE.Object3D();
     anchor.position.copy(origin);
     this.scene.add(anchor);
+
+    // if (this.isMobile) {
+    //   // على موبايل: sprite واضح بدل line رفيعة
+    //   const spriteMat = new THREE.SpriteMaterial({
+    //     color: 0xff8800,
+    //     transparent: true,
+    //     opacity: 0.95,
+    //     blending: THREE.AdditiveBlending,
+    //     depthWrite: false,
+    //   });
+    //   const sprite = new THREE.Sprite(spriteMat);
+    //   sprite.scale.set(60, 60, 1);  // كبير يتبان
+    //   anchor.add(sprite);
+
+    //   this.projectiles.push({
+    //     kind: 'bullet',
+    //     mesh: anchor,
+    //     velocity: dir.clone().multiplyScalar(this.BULLET_SPEED).add(baseVel),
+    //     life: this.BULLET_LIFE,
+    //     maxLife: this.BULLET_LIFE,
+    //     alive: true,
+    //   });
+    //   return;
+    // }
 
     // ── Core tracer line (sharp, bright) ──
     const coreGeo  = this.makeTracerGeo();
@@ -316,6 +351,54 @@ export class ProjectileManager {
     });
   }
 
+  // private spawnMissile(origin: THREE.Vector3, dir: THREE.Vector3, baseVel: THREE.Vector3): void {
+  //   const group = this.isMobile 
+  //     ? this.buildSimpleMissile()   // خفيف
+  //     : buildMissileMesh();          // الكامل
+
+  //   group.quaternion.copy(
+  //     new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, -1), dir)
+  //   );
+  //   group.position.copy(origin);
+  //   this.scene.add(group);
+
+  //   this.projectiles.push({
+  //     kind: 'missile',
+  //     mesh: group,
+  //     velocity: dir.clone().multiplyScalar(this.MISSILE_SPEED).add(baseVel),
+  //     life: this.MISSILE_LIFE,
+  //     maxLife: this.MISSILE_LIFE,
+  //     alive: true,
+  //     smokeTimer: 0,
+  //   });
+  // }
+
+  // private buildSimpleMissile(): THREE.Group {
+  //   const group = new THREE.Group();
+
+  //   // جسم واحد بـ BasicMaterial = بيتبان حتى بدون lighting
+  //   const body = new THREE.Mesh(
+  //     new THREE.CylinderGeometry(4, 4, 60, 6),  // segments 6 مش 12
+  //     new THREE.MeshBasicMaterial({ color: 0xaaaaaa }),
+  //   );
+  //   body.rotation.x = Math.PI / 2;
+  //   group.add(body);
+
+  //   // sprite كبير يتبان من بعيد
+  //   const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+  //     color: 0xff6600,
+  //     transparent: true,
+  //     opacity: 0.9,
+  //     blending: THREE.AdditiveBlending,
+  //     depthWrite: false,
+  //   }));
+  //   glow.scale.set(120, 120, 1);
+  //   glow.name = 'exhaustCore';
+  //   group.add(glow);
+
+  //   return group;
+  // }
+
   // ── UPDATE ───────────────────────────────────
 
   private updateProjectiles(delta: number): void {
@@ -323,7 +406,8 @@ export class ProjectileManager {
     const t = Date.now() * 0.001;
 
     // Scale tracer brightness/width with screen size
-    const ssf = screenScaleFactor();
+    // const ssf = screenScaleFactor();
+    const ssf = this.ssf;
 
     for (const p of this.projectiles) {
       if (!p.alive) continue;

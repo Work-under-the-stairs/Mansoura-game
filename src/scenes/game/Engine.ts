@@ -105,11 +105,11 @@ export class Engine {
       {
         skyExrUrl:       this.isMobile ? '/images/qwantani_afternoon_1k.exr' : '/images/qwantani_afternoon_2k.exr',
         terrainSize:     42000,
-        // terrainSegments: this.isMobile ? 80 : 420,  // ← فرق ضخم جداً
-        terrainSegments: 420,  // ← فرق ضخم جداً
+        terrainSegments: this.isMobile ? 100 : 420,  // ← فرق ضخم جداً
+        // terrainSegments: 420,  // ← فرق ضخم جداً
         riverWidth:      420,
-        // cloudCount:      this.isMobile ? 3 : 10,    // ← سحب أقل
-        cloudCount:      10,    // ← سحب أقل
+        cloudCount:      this.isMobile ? 3 : 10,    // ← سحب أقل
+        // cloudCount:      10,    // ← سحب أقل
       },
       this.renderer,
     );
@@ -234,11 +234,11 @@ export class Engine {
 
   private createEnvironment(): void {
     // this.scene.fog = new THREE.Fog(0xcad9e6, 9000, 52000);
-    // this.scene.fog = new THREE.Fog(
-    //   0xcad9e6,
-    //   this.isMobile ? 5000 : 9000,
-    //   this.isMobile ? 25000 : 52000,
-    // );
+    this.scene.fog = new THREE.Fog(
+      0xcad9e6,
+      this.isMobile ? 5000 : 9000,
+      this.isMobile ? 30000 : 52000,
+    );
   }
 
   // =====================
