@@ -224,8 +224,15 @@ export class WeaponSystem {
     const origin = localOffset.clone();
     this.cockpitModel.localToWorld(origin);
 
-    const forward = new THREE.Vector3(0, 70, 1000);
+    // const forward = new THREE.Vector3(0, 6000, 100000);
+    const forward = new THREE.Vector3(0, 0.05, 1);
     forward.applyQuaternion(this.cockpitModel.quaternion).normalize();
+
+    // const aimPoint = new THREE.Vector3(0, 6000, 100000);
+    // this.cockpitModel.localToWorld(aimPoint);
+
+    // // الرصاصة بتتجه من البرميل لنقطة الـ aim
+    // const forward = aimPoint.clone().sub(origin).normalize()
 
     return { origin, forward };
   }

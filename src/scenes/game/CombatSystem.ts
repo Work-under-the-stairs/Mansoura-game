@@ -53,6 +53,8 @@ class HealthSystem {
   constructor(
     private cockpit: Cockpit,
     private onDeathCallback?: () => void,
+    private onRestartCallback?: () => void,
+    private onExitCallback?: () => void,
   ) {
     this.buildHUD();
     this.hudFill    = document.getElementById('cs-hp-fill')!;
@@ -154,76 +156,85 @@ class HealthSystem {
   }
 
   private buildHUD(): void {
-    document.getElementById('cs-hud-root')?.remove();
-    const root = document.createElement('div');
-    root.id = 'cs-hud-root';
-    root.innerHTML = `
-      <style>
-        #cs-hud-root {
-          position: fixed; top: 18px; left: 50%;
-          transform: translateX(-50%);
-          z-index: 999; pointer-events: none;
-          display: flex; flex-direction: column;
-          align-items: center; gap: 5px;
-          visibility: hidden;
-        }
-        #cs-hp-label {
-          font-family: 'Courier New', monospace;
-          font-size: 11px; letter-spacing: 3px;
-          color: #00ffcc;
-          text-shadow: 0 0 8px #00ffcc88;
-          text-transform: uppercase;
-        }
-        #cs-hp-bar {
-          width: 240px; height: 9px;
-          background: rgba(0,0,0,0.5);
-          border: 1px solid rgba(0,255,180,0.3);
-          border-radius: 2px; overflow: hidden;
-        }
-        #cs-hp-fill {
-          height: 100%; width: 100%;
-          background: linear-gradient(90deg,#00c97a,#00ffcc);
-          border-radius: 2px;
-          transition: width 0.12s ease, background 0.25s ease;
-        }
-        #cs-hit-overlay {
-          position: fixed; inset: 0; z-index: 998;
-          pointer-events: none; opacity: 0;
-          background: radial-gradient(ellipse at center,
-            transparent 25%, rgba(255,20,20,0.52) 100%);
-          transition: opacity 0.07s ease;
-        }
-        #cs-death {
-          position: fixed; inset: 0; z-index: 1000;
-          pointer-events: none; opacity: 0;
-          display: flex; flex-direction: column;
-          align-items: center; justify-content: center;
-          transition: opacity 0.9s ease;
-        }
-        #cs-death.cs-visible { opacity: 1; background: rgba(0,0,0,0.68); }
-        #cs-death-title {
-          font-family: 'Courier New', monospace;
-          font-size: 52px; letter-spacing: 14px;
-          color: #ff2222;
-          text-shadow: 0 0 40px #ff0000, 0 0 80px #ff000044;
-        }
-        #cs-death-sub {
-          margin-top: 14px;
-          font-family: 'Courier New', monospace;
-          font-size: 12px; letter-spacing: 4px;
-          color: rgba(255,255,255,0.45); text-transform: uppercase;
-        }
-      </style>
-      <div id="cs-hp-label">HULL  100%</div>
-      <div id="cs-hp-bar"><div id="cs-hp-fill"></div></div>
-      <div id="cs-hit-overlay"></div>
-      <div id="cs-death">
+  document.getElementById('cs-hud-root')?.remove();
+  const root = document.createElement('div');
+  root.id = 'cs-hud-root';
+  root.innerHTML = `
+    <style>
+      /* شريط الحياة بيفضل فوق في النص */
+      #cs-hud-root {
+        position: fixed; top: 18px; left: 50%;
+        transform: translateX(-50%);
+        z-index: 999; pointer-events: none;
+        display: flex; flex-direction: column;
+        align-items: center; gap: 5px;
+        visibility: hidden;
+      }
+      #cs-hp-label {
+        font-family: 'Courier New', monospace; font-size: 11px; 
+        letter-spacing: 3px; color: #00ffcc; text-shadow: 0 0 8px #00ffcc88;
+      }
+      #cs-hp-bar { width: 240px; height: 9px; background: rgba(0,0,0,0.5); border: 1px solid rgba(0,255,180,0.3); border-radius: 2px; overflow: hidden; }
+      #cs-hp-fill { height: 100%; width: 100%; background: linear-gradient(90deg,#00c97a,#00ffcc); transition: width 0.12s ease; }
+
+      /* شاشة الموت - منفصلة تماما عشان تمسك الشاشة كلها */
+      #cs-death {
+        position: fixed; inset: 0; z-index: 10001; /* أعلى من أي حاجة */
+        display: none; /* مخفية في البداية */
+        align-items: center; justify-content: center;
+        background: rgba(0, 0, 0, 0.75); /* تظليل اللعبة وراها */
+        backdrop-filter: blur(4px); /* اختيار اختياري لزيادة التظليل */
+        pointer-events: all; 
+        opacity: 0; transition: opacity 0.8s ease;
+      }
+      #cs-death.cs-visible { display: flex; opacity: 1; }
+
+      #cs-death-modal {
+        display: flex; flex-direction: column; align-items: center; gap: 24px;
+        padding: 48px 64px; background: rgba(8, 10, 18, 0.95);
+        border: 1px solid rgba(255, 34, 34, 0.4); border-radius: 4px;
+        box-shadow: 0 0 60px rgba(255,0,0,0.2);
+      }
+      #cs-death-title { font-family: 'Courier New', monospace; font-size: 42px; color: #ff2222; letter-spacing: 10px; margin:0; }
+      
+      .cs-btn {
+        font-family: 'Courier New', monospace; padding: 12px 36px;
+        background: transparent; border: 1px solid; border-radius: 2px;
+        cursor: pointer; width: 220px; letter-spacing: 2px; transition: all 0.2s;
+      }
+      #cs-btn-retry { color: #00ffcc; border-color: rgba(0,255,180,0.5); }
+      #cs-btn-retry:hover { background: rgba(0,255,180,0.15); box-shadow: 0 0 15px rgba(0,255,180,0.3); }
+      #cs-btn-exit { color: #aaa; border-color: #444; }
+      #cs-btn-exit:hover { background: rgba(255,255,255,0.1); color: #fff; }
+    </style>
+
+    <div id="cs-hp-label">HULL 100%</div>
+    <div id="cs-hp-bar"><div id="cs-hp-fill"></div></div>
+    <div id="cs-hit-overlay"></div>
+    
+    <div id="cs-death">
+      <div id="cs-death-modal">
         <div id="cs-death-title">DESTROYED</div>
-        <div id="cs-death-sub">hull integrity lost</div>
+        <div id="cs-death-sub" style="color:rgba(255,255,255,0.4); font-size:12px; letter-spacing:3px;">MISSION FAILED</div>
+        <div id="cs-btn-row" style="display:flex; flex-direction:column; gap:12px;">
+          <button class="cs-btn" id="cs-btn-retry">↺ RETRY MISSION</button>
+          <button class="cs-btn" id="cs-btn-exit">⎋ EXIT TO MENU</button>
+        </div>
       </div>
-    `;
-    document.body.appendChild(root);
-  }
+    </div>
+  `;
+  document.body.appendChild(root);
+
+  // ربط الزراير بالـ Callbacks
+  document.getElementById('cs-btn-retry')?.addEventListener('click', () => {
+    console.log("Restarting...");
+    this.onRestartCallback?.();
+  });
+  document.getElementById('cs-btn-exit')?.addEventListener('click', () => {
+    console.log("Exiting...");
+    this.onExitCallback?.();
+  });
+}
 
 
 }
@@ -257,16 +268,20 @@ export class CombatSystem {
   private readonly MISSILE_LIFE     = 12.0;
   private readonly BULLET_DAMAGE    = 6;
   private readonly MISSILE_DAMAGE   = 22;
-  private readonly HIT_R_BULLET     = 600;
-  private readonly HIT_R_MISSILE    = 1_200;
+  // private readonly BULLET_DAMAGE    = 3;
+  // private readonly MISSILE_DAMAGE   = 10;
+  private readonly HIT_R_BULLET     = 500;
+  private readonly HIT_R_MISSILE    = 500;
   private readonly SHOOT_INTERVAL_MIN = 2.0;  // s
   private readonly SHOOT_INTERVAL_MAX = 5.0;
 
   // ── Player hit config ─────────────────────────────────────────
   private readonly PLAYER_BULLET_DMG   = 12;
   private readonly PLAYER_MISSILE_DMG  = 40;
-  private readonly ENEMY_HIT_R_BULLET  = 200;
-  private readonly ENEMY_HIT_R_MISSILE = 550;
+  // private readonly ENEMY_HIT_R_BULLET  = 200;
+  // private readonly ENEMY_HIT_R_MISSILE = 550;
+  private readonly ENEMY_HIT_R_BULLET  = 3000;
+  private readonly ENEMY_HIT_R_MISSILE = 3000;
 
   // ── Shared geometry / material for enemy projectiles ──────────
   private readonly bulletGeo:   THREE.CylinderGeometry;
@@ -288,6 +303,8 @@ export class CombatSystem {
     private enemyManager:      EnemyManager,
     private projectileManager: ProjectileManager,
     private notifications:     NotificationSystem,
+    private onRestartCallback?: () => void,   // ← جديد
+    private onExitCallback?:    () => void,   // ← جديد
   ) {
     this.health = new HealthSystem(cockpit, () => {
       this.notifications.show({
@@ -296,7 +313,10 @@ export class CombatSystem {
         msg:      'Hull integrity lost — mission failed',
         duration: 8000,
       });
-    });
+    },
+    onRestartCallback,   // ← جديد
+    onExitCallback,      // ← جديد
+  );
 
     // Enemy bullet: glowing orange capsule
     this.bulletGeo = new THREE.CylinderGeometry(2.5, 2.5, 28, 6);
@@ -389,7 +409,14 @@ export class CombatSystem {
       ? new THREE.Vector3(0, 0, -1).applyQuaternion(this.cockpit.model.quaternion)
       : new THREE.Vector3();
     const speed      = this.cockpit.currentSpeed ?? 255;
-    const aimPos     = targetPos.clone().addScaledVector(playerFwd, speed * travelTime * 0.55);
+    // const aimPos     = targetPos.clone().addScaledVector(playerFwd, speed * travelTime * 0.55);
+    // const playerVelocity = this.cockpit.getVelocityVector(); // متجه حقيقي (x, y, z)
+    const playerVelocity = playerFwd.multiplyScalar(speed);
+    const aimPos = targetPos.clone().addScaledVector(playerVelocity, travelTime);
+
+    // عشان متخليش العدو "أسطوري" وميغلطش أبدًا، ضيف شوية عشوائية بعد الحساب الصح
+    const errorMargin = 0.02;
+    aimPos.x += (Math.random() - 0.5) * dist * errorMargin;
 
     const spread = 0.04;
     const dir    = aimPos.sub(origin).normalize();
@@ -541,8 +568,46 @@ export class CombatSystem {
 
   // ── Player shots hitting enemies ──────────────────────────────
 
+  // private checkPlayerShotsHitEnemies(): void {
+  //   // Access internal list via any — or add getProjectiles() to ProjectileManager
+  //   const projs = (this.projectileManager as any).projectiles as Array<{
+  //     kind:  string;
+  //     mesh:  THREE.Object3D;
+  //     alive: boolean;
+  //   }> | undefined;
+  //   if (!projs) return;
+
+  //   for (const enemy of this.enemyManager.getEnemies()) {
+  //     // Init HP on userData if not set
+  //     if (enemy.userData.hp === undefined) {
+  //       enemy.userData.hp = 1;
+  //     }
+
+  //     for (const proj of projs) {
+  //       if (!proj.alive) continue;
+
+  //       const dist = proj.mesh.position.distanceTo(enemy.position);
+  //       const hitR = proj.kind === 'missile' ? this.ENEMY_HIT_R_MISSILE : this.ENEMY_HIT_R_BULLET;
+
+  //       if (dist < hitR) {
+  //         proj.alive = false;
+  //         const dmg  = proj.kind === 'missile' ? this.PLAYER_MISSILE_DMG : this.PLAYER_BULLET_DMG;
+  //         enemy.userData.hp -= dmg;
+          
+  //         console.log(`💥 HIT! dist=${Math.round(dist)} hitR=${hitR} dmg=${dmg} hp=${enemy.userData.hp}`);
+  //         // Hit flash
+  //         this.flashEnemy(enemy, 0.15);
+
+  //         // console.log(`💥 Enemy hit -${dmg} HP → ${enemy.userData.hp}`);
+
+  //         if (enemy.userData.hp <= 0) {
+  //           this.explodeAndRemove(enemy);
+  //         }
+  //       }
+  //     }
+  //   }
+  // }
   private checkPlayerShotsHitEnemies(): void {
-    // Access internal list via any — or add getProjectiles() to ProjectileManager
     const projs = (this.projectileManager as any).projectiles as Array<{
       kind:  string;
       mesh:  THREE.Object3D;
@@ -550,31 +615,32 @@ export class CombatSystem {
     }> | undefined;
     if (!projs) return;
 
-    for (const enemy of this.enemyManager.getEnemies()) {
-      // Init HP on userData if not set
-      if (enemy.userData.hp === undefined) {
-        enemy.userData.hp = 100;
-      }
+    for (const proj of projs) {
+      if (!proj.alive) continue;  // ← اتحرك للـ proj هو الـ outer loop
 
-      for (const proj of projs) {
-        if (!proj.alive) continue;
+      for (const enemy of this.enemyManager.getEnemies()) {
+        if (enemy.userData.isDead) continue;
+
+        if (enemy.userData.hp === undefined) {
+          enemy.userData.hp = 1;
+        }
 
         const dist = proj.mesh.position.distanceTo(enemy.position);
         const hitR = proj.kind === 'missile' ? this.ENEMY_HIT_R_MISSILE : this.ENEMY_HIT_R_BULLET;
 
         if (dist < hitR) {
-          proj.alive = false;
-          const dmg  = proj.kind === 'missile' ? this.PLAYER_MISSILE_DMG : this.PLAYER_BULLET_DMG;
+          proj.alive = false; 
+          const dmg = proj.kind === 'missile' ? this.PLAYER_MISSILE_DMG : this.PLAYER_BULLET_DMG;
           enemy.userData.hp -= dmg;
+          console.log(`💥 HIT! dist=${Math.round(dist)} hitR=${hitR} dmg=${dmg} hp=${enemy.userData.hp}`);
 
-          // Hit flash
           this.flashEnemy(enemy, 0.15);
-
-          // console.log(`💥 Enemy hit -${dmg} HP → ${enemy.userData.hp}`);
 
           if (enemy.userData.hp <= 0) {
             this.explodeAndRemove(enemy);
           }
+
+          break; 
         }
       }
     }
@@ -582,60 +648,165 @@ export class CombatSystem {
 
   // ── Enemy death ───────────────────────────────────────────────
 
+  // private explodeAndRemove(enemy: THREE.Object3D): void {
+  //   this.spawnExplosion(enemy.position.clone());
+  //   // Remove any shots this enemy fired
+  //   const toRemove = this.shots.filter(s => s.owner === enemy);
+  //   for (const s of toRemove) {
+  //     this.scene.remove(s.mesh);
+  //   }
+  //   this.shots = this.shots.filter(s => s.owner !== enemy);
+  //   this.cooldowns.delete(enemy.uuid);
+  //   this.shootIntervals.delete(enemy.uuid);
+  //   this.enemyManager.removeEnemy(enemy);
+
+  //   // console.log('💀 Enemy destroyed');
+
+  //   this.notifications.show({
+  //     type:     'kill',
+  //     title:    'BANDIT DOWN',
+  //     msg:      'Target eliminated',
+  //     duration: 3500,
+  //   });
+  // }
   private explodeAndRemove(enemy: THREE.Object3D): void {
-    this.spawnExplosion(enemy.position.clone());
-    // Remove any shots this enemy fired
-    const toRemove = this.shots.filter(s => s.owner === enemy);
-    for (const s of toRemove) {
-      this.scene.remove(s.mesh);
+  this.spawnExplosion(enemy.position.clone());
+
+  // امسح الطلقات بتاعته
+  const toRemove = this.shots.filter(s => s.owner === enemy);
+  for (const s of toRemove) this.scene.remove(s.mesh);
+  this.shots = this.shots.filter(s => s.owner !== enemy);
+  this.cooldowns.delete(enemy.uuid);
+  this.shootIntervals.delete(enemy.uuid);
+
+  // وقوع لتحت ثم اختفاء
+  this.startDeathFall(enemy);
+
+  this.notifications.show({
+    type: 'kill', title: 'BANDIT DOWN',
+    msg: 'Target eliminated', duration: 3500,
+  });
+}
+
+private startDeathFall(enemy: THREE.Object3D): void {
+  // امنع EnemyManager من تحريكه
+  enemy.userData.isDead = true;
+
+  const FALL_DURATION = 2.0;   // ثواني الوقوع
+  const FALL_SPEED    = 8_000; // سرعة الهبوط
+  const SPIN_SPEED    = 2.5;   // سرعة الدوران
+
+  let elapsed = 0;
+
+  const tick = (delta: number) => {
+    elapsed += delta;
+    const t = elapsed / FALL_DURATION;
+
+    enemy.position.y    -= FALL_SPEED * delta;
+    enemy.rotation.z    += SPIN_SPEED * delta;
+    enemy.rotation.x    += SPIN_SPEED * 0.5 * delta;
+
+    // يصغر شوية وهو بيوقع
+    const scale = enemy.scale.x * (1 - 0.3 * delta);
+    enemy.scale.setScalar(Math.max(scale, 0));
+
+    if (t >= 1) {
+      this.enemyManager.removeEnemy(enemy);
+    } else {
+      // استدعاء نفسه في الفريم الجاي
+      requestAnimationFrame(() => tick(1/60));
     }
-    this.shots = this.shots.filter(s => s.owner !== enemy);
-    this.cooldowns.delete(enemy.uuid);
-    this.shootIntervals.delete(enemy.uuid);
-    this.enemyManager.removeEnemy(enemy);
+  };
 
-    // console.log('💀 Enemy destroyed');
+  requestAnimationFrame(() => tick(1/60));
+}
 
-    this.notifications.show({
-      type:     'kill',
-      title:    'BANDIT DOWN',
-      msg:      'Target eliminated',
-      duration: 3500,
-    });
-  }
+  // private spawnExplosion(pos: THREE.Vector3): void {
+  //   const colors = [0xff6600, 0xff3300, 0xffcc00, 0xffffff];
+  //   for (let i = 0; i < 10; i++) {
+  //     const mat = new THREE.SpriteMaterial({
+  //       color:      colors[i % colors.length],
+  //       transparent: true, opacity: 0.9,
+  //       blending:   THREE.AdditiveBlending, depthWrite: false,
+  //     });
+  //     const sprite = new THREE.Sprite(mat);
+  //     sprite.position.copy(pos).addScaledVector(
+  //       new THREE.Vector3(Math.random()-0.5, Math.random()-0.5, Math.random()-0.5).normalize(),
+  //       Math.random() * 500,
+  //     );
+  //     const s = 300 + Math.random() * 700;
+  //     sprite.scale.set(s, s, 1);
+  //     this.scene.add(sprite);
 
+  //     let life = 0;
+  //     const id = setInterval(() => {
+  //       life += 0.016;
+  //       const t = life / 0.7;
+  //       if (t >= 1) {
+  //         this.scene.remove(sprite);
+  //         mat.dispose();
+  //         clearInterval(id);
+  //       } else {
+  //         mat.opacity = 0.9 * (1 - t * t);
+  //         sprite.scale.setScalar(s * (1 + t * 2.5));
+  //       }
+  //     }, 16);
+  //   }
+  // }
   private spawnExplosion(pos: THREE.Vector3): void {
-    const colors = [0xff6600, 0xff3300, 0xffcc00, 0xffffff];
-    for (let i = 0; i < 10; i++) {
-      const mat = new THREE.SpriteMaterial({
-        color:      colors[i % colors.length],
-        transparent: true, opacity: 0.9,
-        blending:   THREE.AdditiveBlending, depthWrite: false,
-      });
-      const sprite = new THREE.Sprite(mat);
-      sprite.position.copy(pos).addScaledVector(
-        new THREE.Vector3(Math.random()-0.5, Math.random()-0.5, Math.random()-0.5).normalize(),
-        Math.random() * 500,
-      );
-      const s = 300 + Math.random() * 700;
-      sprite.scale.set(s, s, 1);
-      this.scene.add(sprite);
+  // حلقة واحدة بس — 6 sprites خفيفة
+  const layers = [
+    { color: 0xffffff, size: 400,  opacity: 1.0, speed: 0.5  }, // لمعة بيضاء لحظية
+    { color: 0xffdd00, size: 700,  opacity: 0.9, speed: 0.7  }, // كرة صفراء
+    { color: 0xff6600, size: 900,  opacity: 0.8, speed: 0.9  }, // برتقالي
+    { color: 0xff2200, size: 600,  opacity: 0.7, speed: 1.1  }, // أحمر
+    { color: 0x331100, size: 1100, opacity: 0.5, speed: 0.6  }, // دخان داكن
+    { color: 0x888888, size: 800,  opacity: 0.3, speed: 0.4  }, // دخان رمادي
+  ];
 
-      let life = 0;
-      const id = setInterval(() => {
-        life += 0.016;
-        const t = life / 0.7;
-        if (t >= 1) {
-          this.scene.remove(sprite);
-          mat.dispose();
-          clearInterval(id);
-        } else {
-          mat.opacity = 0.9 * (1 - t * t);
-          sprite.scale.setScalar(s * (1 + t * 2.5));
-        }
-      }, 16);
-    }
+  for (const layer of layers) {
+    const mat = new THREE.SpriteMaterial({
+      color:       layer.color,
+      transparent: true,
+      opacity:     layer.opacity,
+      blending:    layer.color === 0x331100 || layer.color === 0x888888
+                     ? THREE.NormalBlending
+                     : THREE.AdditiveBlending,
+      depthWrite:  false,
+    });
+
+    const sprite = new THREE.Sprite(mat);
+    sprite.position.copy(pos);
+    sprite.scale.setScalar(layer.size * 0.3); // يبدأ صغير
+    this.scene.add(sprite);
+
+    const targetSize = layer.size;
+    const duration   = 0.55 + layer.speed * 0.2;
+    let   elapsed    = 0;
+
+    const tick = () => {
+      elapsed += 0.016;
+      const t = elapsed / duration; // 0 → 1
+
+      if (t >= 1) {
+        this.scene.remove(sprite);
+        mat.dispose();
+        return;
+      }
+
+      // يكبر بسرعة في الأول ثم يبطأ
+      const eased = 1 - Math.pow(1 - t, 2);
+      sprite.scale.setScalar(targetSize * eased);
+
+      // يعتم بالتدريج
+      mat.opacity = layer.opacity * (1 - t * t);
+
+      requestAnimationFrame(tick);
+    };
+
+    requestAnimationFrame(tick);
   }
+}
 
   // ── Helpers ───────────────────────────────────────────────────
 

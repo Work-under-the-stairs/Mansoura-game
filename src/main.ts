@@ -6,19 +6,46 @@ import { OrientationGuard } from './utils/OrientationGuard';
 
 const orientationGuard = new OrientationGuard();
 
-// main.ts — add at the very top before anything else
-  
 document.body.style.margin = '0';
 document.body.style.padding = '0';
 document.body.style.overflow = 'hidden';
-document.body.style.background = '#0f121a'; 
+document.body.style.background = '#0f121a';
 
+// ── Helper: start (or restart) the game session ─────────────────
+function launchGame(existingEngine?: Engine): void {
+  // Destroy old engine instance cleanly if restarting
+  existingEngine?.destroy();
+
+  const engine = new Engine();  // fresh engine, no loading scene on restart
+
+  engine.onReady(() => {
+    const narrative = new NarrativeScene(document.body);
+    narrative.show();
+
+    narrative.onComplete(() => {
+      engine.show();
+      engine.init({
+        onRestart: () => launchGame(engine),
+        onExit:    () => {
+          engine.destroy();
+          showMainMenu();
+        },
+      });
+    });
+  });
+}
+
+// ── Helper: show main menu ───────────────────────────────────────
+function showMainMenu(): void {
+  const menu = new MainMenuScene(document.body);
+  menu.show();
+  menu.onStart(() => launchGame());
+}
+
+// ── Boot: loading screen then main menu ─────────────────────────
 const loading = new LoadingScene(document.body);
-
-// Engine starts loading all assets immediately (silently, canvas is hidden)
 const gameEngine = new Engine(loading);
 
-// When all assets finish loading → show the main menu
 gameEngine.onReady(() => {
   const menu = new MainMenuScene(document.body);
   menu.show();
@@ -27,12 +54,15 @@ gameEngine.onReady(() => {
     const narrative = new NarrativeScene(document.body);
     narrative.show();
 
-
     narrative.onComplete(() => {
-      // Only NOW reveal the game canvas and mobile controls
       gameEngine.show();
-      // Start the render + game loop
-      gameEngine.init();
+      gameEngine.init({
+        onRestart: () => launchGame(gameEngine),
+        onExit:    () => {
+          gameEngine.destroy();
+          showMainMenu();
+        },
+      });
     });
   });
 });

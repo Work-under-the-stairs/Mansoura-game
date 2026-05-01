@@ -20,7 +20,7 @@ export class Engine {
   private controls: Controls;
   private world: World;
   private enemies: EnemyManager;
-  private combatSystem: CombatSystem;
+  public combatSystem: CombatSystem;
   private notifications: NotificationSystem;
 
   private container: HTMLDivElement;
@@ -30,6 +30,10 @@ export class Engine {
   private mobileControls: MobileControls;
   private projectileManager: ProjectileManager;
   private readonly isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
+
+
+  private onRestartCallback: (() => void) | null = null;
+  private onExitCallback: (() => void) | null = null;
 
   constructor(loadingScene: LoadingScene) {
     this.loadingScene   = loadingScene;
@@ -133,7 +137,18 @@ export class Engine {
       this.enemies,
       this.projectileManager,
       this.notifications,
+      () => { 
+        console.log("Engine: Restart triggered");
+        // هنا ممكن تنادي على ميثود الريستارت اللي في main.ts لو محتاج
+        // أو لو الـ Engine عنده ميثود ريستارت خاصة بيه
+      }, 
+      () => { 
+        console.log("Engine: Exit triggered");
+        this.destroy(); // بيمسح السين الحالية
+        // ويرجع للمنيو (ده بيعتمد على الـ flow في main.ts عندك)
+      }
     );
+
 
     this.setupLights();
     this.createEnvironment();
@@ -245,9 +260,29 @@ export class Engine {
   //  Lifecycle
   // =====================
 
-  public init(): void {
-    this.animate();
+  // public init(): void {
+  //   this.animate();
+  // }
+
+  public init(options?: { onRestart?: () => void; onExit?: () => void }): void {
+  // ربط أحداث الأزرار بالـ Logic اللي جاي من main.ts
+  if (this.combatSystem && options) {
+    // الوصول للـ health system وتحديث الـ callbacks
+    const hs = (this.combatSystem as any).health;
+    
+    hs.onRestartCallback = () => {
+      this.destroy(); // تنظيف المحرك الحالي تماماً
+      options.onRestart?.(); 
+    };
+
+    hs.onExitCallback = () => {
+      this.destroy();
+      options.onExit?.();
+    };
   }
+
+  this.animate();
+}
 
   private onWindowResize = (): void => {
     this.camera.aspect = window.innerWidth / window.innerHeight;

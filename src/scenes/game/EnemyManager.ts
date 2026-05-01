@@ -25,7 +25,8 @@ const MAX_SCALE_FACTOR = 2.5;
  * How many seconds after spawning before an enemy starts tracking the cockpit.
  * During this window the enemy holds its spawn position.
  */
-const LAG_DURATION = 9;
+// const LAG_DURATION = 9;
+const LAG_DURATION = 3;
 
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -166,6 +167,8 @@ export class EnemyManager {
             for (let i = 0; i < this.enemies.length; i++) {
                 const enemy = this.enemies[i];
 
+                if (enemy.userData.isDead) continue;
+
                 // Skip tracking until the lag window has passed
                 const age = this.elapsedTime - (enemy.userData.spawnTime as number ?? 0);
                 if (age < LAG_DURATION) continue;
@@ -182,7 +185,10 @@ export class EnemyManager {
                 this._targetPos.y = this._cockpitPos.y;
 
                 // Smoothly follow the target position
-                enemy.position.lerp(this._targetPos, delta * 1.2); 
+                // enemy.position.lerp(this._targetPos, delta * 1.2); 
+                
+                const trackingSpeed = THREE.MathUtils.clamp((age - LAG_DURATION) * 0.08, 0.02, 0.15);
+                enemy.position.lerp(this._targetPos, delta * trackingSpeed * 60);
 
                 // Face the cockpit directly
                 enemy.lookAt(this._cockpitPos);
