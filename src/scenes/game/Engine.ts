@@ -24,7 +24,6 @@ export class Engine {
   private notifications: NotificationSystem;
 
   private container: HTMLDivElement;
-  // private clock = new THREE.Clock();
   private clock = new THREE.Timer();
   private animationFrameId = 0;
   private mobileControls: MobileControls;
@@ -34,11 +33,28 @@ export class Engine {
 
   private onRestartCallback: (() => void) | null = null;
   private onExitCallback: (() => void) | null = null;
+  private readyCallback: (() => void) | null = null;
+  private animationStarted = false;
 
   constructor(loadingScene: LoadingScene) {
     this.loadingScene   = loadingScene;
     this.loadingManager = new THREE.LoadingManager();
+
+    // 1. Attach the manager first
     this.loadingScene.attachToLoadingManager(this.loadingManager);
+
+    // 2. Force small UI update to prevent 0% freeze
+    this.loadingScene.updateProgress(1);
+
+    // 3. When loading finishes + overlay fades, ONLY fire readyCallback.
+    //    show() and init() are called by main.ts — not here.
+    this.loadingScene.onComplete(() => {
+      console.log('[Engine] Assets ready — firing readyCallback');
+      if (this.readyCallback) {
+        this.readyCallback();
+        this.readyCallback = null;
+      }
+    });
 
     this.scene = new THREE.Scene();
 
@@ -64,44 +80,25 @@ export class Engine {
     document.body.appendChild(this.container);
 
     this.renderer = new THREE.WebGLRenderer({
-      // antialias:              true,
       antialias:              !this.isMobile,
       powerPreference:        'high-performance',
-      // logarithmicDepthBuffer: true,
       logarithmicDepthBuffer: !this.isMobile,
     });
 
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-    // this.renderer.setPixelRatio(this.isMobile ? 1 : Math.min(window.devicePixelRatio, 1.5));
     this.renderer.toneMapping         = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.outputColorSpace    = THREE.SRGBColorSpace;
-    // this.renderer.shadowMap.enabled   = true;
-    this.renderer.shadowMap.enabled   = !this.isMobile; // ← shadows off on mobile for performance
+    this.renderer.shadowMap.enabled   = !this.isMobile;
     this.renderer.shadowMap.type      = THREE.PCFSoftShadowMap;
 
     this.container.appendChild(this.renderer.domElement);
 
-    // ── Notification system — mounted on document.body ──
-    // Must be constructed BEFORE CombatSystem so it can be passed in
     this.notifications = new NotificationSystem();
 
     this.controls       = new Controls();
     this.mobileControls = new MobileControls(this.container, this.controls);
-
-    // this.world = new World(
-    //   this.scene,
-    //   this.loadingManager,
-    //   {
-    //     skyExrUrl:       '/images/qwantani_afternoon_2k.exr',
-    //     terrainSize:     42000,
-    //     terrainSegments: 420,
-    //     riverWidth:      420,
-    //     cloudCount:      10,
-    //   },
-    //   this.renderer,
-    // );
 
     this.world = new World(
       this.scene,
@@ -109,11 +106,9 @@ export class Engine {
       {
         skyExrUrl:       this.isMobile ? '/images/qwantani_afternoon_1k.exr' : '/images/qwantani_afternoon_2k.exr',
         terrainSize:     42000,
-        terrainSegments: this.isMobile ? 100 : 420,  
-        // terrainSegments: 420,  
+        terrainSegments: this.isMobile ? 100 : 420,
         riverWidth:      420,
-        cloudCount:      this.isMobile ? 3 : 10,  
-        // cloudCount:      10,    
+        cloudCount:      this.isMobile ? 3 : 10,
       },
       this.renderer,
     );
@@ -153,13 +148,9 @@ export class Engine {
     this.setupLights();
     this.createEnvironment();
 
-    // if (isMobile) this.optimizeForMobile();
-    // applyMobileOptimizations(this.renderer, this.scene);
-
     window.addEventListener('resize', this.onWindowResize);
 
     this.hide();
-
   }
 
   // =====================
@@ -181,7 +172,6 @@ export class Engine {
     const mobileControls = document.getElementById('mobile-controls');
     if (mobileControls) mobileControls.style.display = 'none';
 
-    // Hide MiniMap arrow when cockpit is hidden
     if ((window as any).miniMap) {
       (window as any).miniMap.hideArrow();
     }
@@ -198,24 +188,13 @@ export class Engine {
     const mobileControls = document.getElementById('mobile-controls');
     if (mobileControls) mobileControls.style.display = '';
 
-    // Show MiniMap arrow when cockpit is shown
     if ((window as any).miniMap) {
       (window as any).miniMap.showArrow();
     }
-    if (this.combatSystem){
+    if (this.combatSystem) {
       this.combatSystem.showHUD();
     }
-    // this.enterFullscreen();
   }
-
-  // private enterFullscreen(): void {
-  //   const el = document.documentElement;
-  //   if (el.requestFullscreen) {
-  //     el.requestFullscreen();
-  //   } else if ((el as any).webkitRequestFullscreen) {
-  //     (el as any).webkitRequestFullscreen(); // Safari/iOS
-  //   }
-  // }
 
   // =====================
   //  Lights & environment
@@ -227,10 +206,8 @@ export class Engine {
 
     const sunLight = new THREE.DirectionalLight(0xfff3d0, 4);
     sunLight.position.set(-9000, 8500, -5000);
-    // sunLight.castShadow = true;
-    sunLight.castShadow = !this.isMobile; // ← shadows off on mobile for performance
+    sunLight.castShadow = !this.isMobile;
 
-    // sunLight.shadow.mapSize.set(2048, 2048);
     sunLight.shadow.mapSize.set(
       this.isMobile ? 512 : 2048,
       this.isMobile ? 512 : 2048,
@@ -248,7 +225,6 @@ export class Engine {
   }
 
   private createEnvironment(): void {
-    // this.scene.fog = new THREE.Fog(0xcad9e6, 9000, 52000);
     this.scene.fog = new THREE.Fog(
       0xcad9e6,
       this.isMobile ? 5000 : 9000,
@@ -265,24 +241,30 @@ export class Engine {
   // }
 
   public init(options?: { onRestart?: () => void; onExit?: () => void }): void {
-  // ربط أحداث الأزرار بالـ Logic اللي جاي من main.ts
-  if (this.combatSystem && options) {
-    // الوصول للـ health system وتحديث الـ callbacks
-    const hs = (this.combatSystem as any).health;
-    
-    hs.onRestartCallback = () => {
-      this.destroy(); // تنظيف المحرك الحالي تماماً
-      options.onRestart?.(); 
-    };
+    // ربط أحداث الأزرار بالـ Logic اللي جاي من main.ts
+    if (this.combatSystem && options) {
+      // الوصول للـ health system وتحديث الـ callbacks
+      const hs = (this.combatSystem as any).health;
+      
+      hs.onRestartCallback = () => {
+        this.destroy(); // تنظيف المحرك الحالي تماماً
+        options.onRestart?.(); 
+      };
 
-    hs.onExitCallback = () => {
-      this.destroy();
-      options.onExit?.();
-    };
+      hs.onExitCallback = () => {
+        this.destroy();
+        options.onExit?.();
+      };
+
+    /** Start the render loop. Guarded — safe to call only once. */
+      if (this.animationStarted) {
+        console.warn('[Engine] init() called more than once — ignoring');
+        return;
+      }
+      this.animationStarted = true;
+      this.animate();
+    }
   }
-
-  this.animate();
-}
 
   private onWindowResize = (): void => {
     this.camera.aspect = window.innerWidth / window.innerHeight;
@@ -290,46 +272,13 @@ export class Engine {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
   };
 
-  // private fpsDisplay: HTMLElement | null = null;
-  // private frameCount = 0;
-  // private fpsTimer = 0;
-
   private mobileOptimized = false;
-
-  // private initFPSCounter(): void {
-  //   const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
-  //   if (!isMobile) return;
-    
-  //   this.fpsDisplay = document.createElement('div');
-  //   this.fpsDisplay.style.cssText = `
-  //     position: fixed; top: 50px; right: 10px;
-  //     color: lime; font-size: 16px; font-family: monospace;
-  //     z-index: 99999; background: rgba(0,0,0,0.5);
-  //     padding: 4px 8px; border-radius: 4px;
-  //   `;
-  //   document.body.appendChild(this.fpsDisplay);
-  // }
 
   private animate = (): void => {
     this.animationFrameId = window.requestAnimationFrame(this.animate);
 
-    this.clock.update(); // ← ضيفي السطر ده
-
+    this.clock.update();
     const delta = this.clock.getDelta();
-
-  
-
-    // // FPS counter
-    // this.frameCount++;
-    // this.fpsTimer += delta;
-    // if (this.fpsTimer >= 1.0) {
-    //   if (this.fpsDisplay) this.fpsDisplay.textContent = `${this.frameCount} FPS`;
-    //   this.frameCount = 0;
-    //   this.fpsTimer = 0;
-    // }
-    // this.animationFrameId = window.requestAnimationFrame(this.animate);
-
-    // const delta = this.clock.getDelta();
 
     if (this.cockpit) this.cockpit.update(delta);
     if (this.world)   this.world.update(delta, this.cockpit.model?.position, this.cockpit.model ?? undefined);
@@ -362,11 +311,15 @@ export class Engine {
     console.log('Engine destroyed safely.');
   }
 
+  /**
+   * Register a callback fired once loading is done and the overlay has faded.
+   * main.ts uses this to: show menu → narrative → then call show() + init().
+   */
   public onReady(callback: () => void): void {
-    this.loadingScene.onComplete(callback);
+    this.readyCallback = callback;
   }
+
   private optimizeForMobile(): void {
-    // const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
     if (!this.isMobile) return;
 
     this.scene.traverse((obj) => {
@@ -378,12 +331,10 @@ export class Engine {
         const m = mat as THREE.MeshStandardMaterial;
         if (!m.isMeshStandardMaterial) continue;
 
-        // شيل normal map — أكبر توفير في GPU
         if (m.normalMap) {
           m.normalMap.dispose();
           m.normalMap = null;
         }
-        // شيل occlusion map
         if (m.aoMap) {
           m.aoMap.dispose();
           m.aoMap = null;

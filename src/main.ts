@@ -51,6 +51,9 @@ gameEngine.onReady(() => {
   menu.show();
 
   menu.onStart(() => {
+    const audio = loading.getAudio();
+  console.log("Audio element:", audio);
+  loading.setVolume(0.05);
     const narrative = new NarrativeScene(document.body);
     narrative.show();
 
