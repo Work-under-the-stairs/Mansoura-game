@@ -12,6 +12,8 @@ export class Cockpit {
     public currentSpeed = 255;
 
     private rotationSpeed = { pitch: 0, roll: 0 };
+    
+    private readonly isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
 
     private config = {
         sensitivity:      0.0006,
@@ -78,8 +80,14 @@ export class Cockpit {
             this.model.traverse((child) => {
                 if ((child as THREE.Mesh).isMesh) {
                     const mesh = child as THREE.Mesh;
-                    mesh.castShadow    = true;
-                    mesh.receiveShadow = true;
+
+                    if (!this.isMobile) {
+                        mesh.castShadow = true;
+                        mesh.receiveShadow = true;
+                    }
+
+                    // mesh.castShadow    = true;
+                    // mesh.receiveShadow = true;
                     if (mesh.material instanceof THREE.MeshStandardMaterial) {
                         mesh.material.roughness = 0.6;
                     }

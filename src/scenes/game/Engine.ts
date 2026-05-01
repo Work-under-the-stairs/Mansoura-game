@@ -63,8 +63,8 @@ export class Engine {
       antialias:              true,
       // antialias:              !this.isMobile,
       powerPreference:        'high-performance',
-      logarithmicDepthBuffer: true,
-      // logarithmicDepthBuffer: !this.isMobile,
+      // logarithmicDepthBuffer: true,
+      logarithmicDepthBuffer: !this.isMobile,
     });
 
     this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -72,7 +72,8 @@ export class Engine {
     this.renderer.toneMapping         = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.outputColorSpace    = THREE.SRGBColorSpace;
-    this.renderer.shadowMap.enabled   = true;
+    // this.renderer.shadowMap.enabled   = true;
+    this.renderer.shadowMap.enabled   = !this.isMobile; // ← shadows off on mobile for performance
     this.renderer.shadowMap.type      = THREE.PCFSoftShadowMap;
 
     this.container.appendChild(this.renderer.domElement);
@@ -301,10 +302,10 @@ export class Engine {
 
     this.renderer.render(this.scene, this.camera);
 
-    // if (!this.mobileOptimized && this.cockpit.model) {
-    //   this.optimizeForMobile();
-    //   this.mobileOptimized = true;
-    // }
+    if (!this.mobileOptimized && this.cockpit.model) {
+      this.optimizeForMobile();
+      this.mobileOptimized = true;
+    }
   };
 
   public destroy(): void {

@@ -204,8 +204,10 @@ export class ProjectileManager {
   private readonly MISSILE_ACCEL  = 220;
   private readonly MISSILE_LIFE   = 8.0;
   // private readonly SMOKE_INTERVAL = 0.028;
-  private readonly SMOKE_INTERVAL = this.isMobile ? 0.15 : 0.028;
-  private readonly SMOKE_LIFE_MAX = 2.2;
+  // private readonly SMOKE_INTERVAL = this.isMobile ? 0.15 : 0.028;
+  private readonly SMOKE_INTERVAL = this.isMobile ? 0.3 : 0.028;
+  // private readonly SMOKE_LIFE_MAX = 2.2;
+  private readonly SMOKE_LIFE_MAX = this.isMobile ? 1 : 2.2;
 
   constructor(private scene: THREE.Scene) {}
 

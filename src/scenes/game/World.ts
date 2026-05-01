@@ -136,7 +136,7 @@ export class World {
     }
 
     if (cockpitObject) {
-      cockpitObject.updateMatrixWorld(true);
+      // cockpitObject.updateMatrixWorld(true);
       cockpitObject.getWorldQuaternion(this._quat);
       this._euler.setFromQuaternion(this._quat, 'YXZ');
       this.miniMap.updateHeading(this._euler.y);
