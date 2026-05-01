@@ -8,8 +8,19 @@ export class LoadingScene {
   private tipText: HTMLElement | null = null;
   private diamonds: NodeListOf<HTMLElement> | null = null;
   private onCompleteCallback: (() => void) | null = null;
-
+  private loadingManager: THREE.LoadingManager | null = null;
   private audio: HTMLAudioElement | null = null;
+
+  private isLoadFinished: boolean = false;
+  // Only true when hide() is ACTUALLY scheduled — not just when onLoad fired
+  private hideScheduled: boolean = false;
+
+  private currentProgress: number = 0;
+  private targetProgress: number = 0;
+  private animFrame: number | null = null;
+  private animationRunning: boolean = false;
+
+  private pendingVolume: number | null = null;
 
   private tips: string[] = [
     'جاري تحميل الخرائط...',
@@ -21,7 +32,7 @@ export class LoadingScene {
 
   constructor(container: HTMLElement) {
     this.container = container;
-    this.showTapToStart(); // 👆 show tap screen first, overlay created AFTER click
+    this.showTapToStart();
   }
 
   // =============================
@@ -33,439 +44,267 @@ export class LoadingScene {
     startScreen.innerHTML = `
       <style>
         #tap-to-start {
-          position: fixed;
-          inset: 0;
-          z-index: 99999;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          background: #0a0f19;
-          font-family: 'Cairo', sans-serif;
-          cursor: pointer;
-          direction: rtl;
+          position: fixed; inset: 0; z-index: 99999;
+          display: flex; flex-direction: column; align-items: center; justify-content: center;
+          background: #0a0f19; font-family: 'Cairo', sans-serif; cursor: pointer; direction: rtl;
         }
-
-        #tap-to-start .tap-logo {
-          color: #e8c97a;
-          font-size: 32px;
-          font-weight: 900;
-          letter-spacing: 4px;
-          margin-bottom: 8px;
-          text-align: center;
+        .tap-logo { color: #e8c97a; font-size: 32px; font-weight: 900; letter-spacing: 4px; margin-bottom: 8px; }
+        .tap-date { color: rgba(255,255,255,0.3); font-size: 12px; letter-spacing: 6px; margin-bottom: 48px; }
+        .tap-icon {
+          width: 48px; height: 48px; border: 1.5px solid rgba(232, 201, 122, 0.4);
+          border-radius: 50%; display: flex; align-items: center; justify-content: center;
+          margin-bottom: 20px; animation: tapPulse 1.6s ease-in-out infinite;
         }
-
-        #tap-to-start .tap-date {
-          color: rgba(255,255,255,0.3);
-          font-size: 12px;
-          letter-spacing: 6px;
-          margin-bottom: 48px;
-        }
-
-        #tap-to-start .tap-icon {
-          width: 48px;
-          height: 48px;
-          border: 1.5px solid rgba(232, 201, 122, 0.4);
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          margin-bottom: 20px;
-          animation: tapPulse 1.6s ease-in-out infinite;
-        }
-
-        #tap-to-start .tap-icon svg {
-          width: 20px;
-          height: 20px;
-          fill: #e8c97a;
-        }
-
-        #tap-to-start .tap-sub {
-          color: rgba(255,255,255,0.4);
-          font-size: 13px;
-          letter-spacing: 4px;
-          animation: tapPulse 1.6s ease-in-out infinite;
-        }
-
-        @keyframes tapPulse {
-          0%, 100% { opacity: 0.3; }
-          50% { opacity: 1; }
-        }
+        .tap-sub { color: rgba(255,255,255,0.4); font-size: 13px; letter-spacing: 4px; animation: tapPulse 1.6s ease-in-out infinite; }
+        @keyframes tapPulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
       </style>
-
       <div class="tap-logo">معارك مصر الجوية</div>
       <div class="tap-date">١٤ أكتوبر ١٩٧٣</div>
-
       <div class="tap-icon">
-        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-          <path d="M3 9v6l4 2V7L3 9zm13 3c0-1.77-1.02-3.29-2.5-4.03v8.06C14.98 15.29 16 13.77 16 12zm-8.5 0c0 .55.45 1 1 1s1-.45 1-1-.45-1-1-1-1 .45-1 1zm5 0c0 2.21-1.79 4-4 4s-4-1.79-4-4 1.79-4 4-4 4 1.79 4 4zm2.5-4.03v8.06C19.98 15.29 21 13.77 21 12s-1.02-3.29-2.5-4.03z"/>
+        <svg width="24" height="24" fill="#e8c97a" viewBox="0 0 24 24">
+          <path d="M3 9v6l4 2V7L3 9zm13 3c0-1.77-1.02-3.29-2.5-4.03v8.06C14.98 15.29 16 13.77 16 12z"/>
         </svg>
       </div>
-
       <div class="tap-sub">اضغط للبدء</div>
     `;
 
     document.body.appendChild(startScreen);
 
-    // const unlock = () => {
-    //   // Start music on user gesture — guaranteed to work
-    //   this.initMusic();
-
-    //   // Fade out tap screen
-    //   startScreen.style.transition = 'opacity 0.6s ease';
-    //   startScreen.style.opacity = '0';
-    //   setTimeout(() => startScreen.remove(), 700);
-
-    //   startScreen.removeEventListener('click', unlock);
-    //   startScreen.removeEventListener('touchstart', unlock);
-    // };
     const unlock = () => {
-      // ✅ Start music on user gesture
+      console.log('[LoadingScene] User clicked. isLoadFinished=', this.isLoadFinished, 'hideScheduled=', this.hideScheduled);
       this.initMusic();
-
-      // ✅ NOW create the loading overlay after click
       this.overlay = this.createOverlay();
-      this.progressBar = this.overlay.querySelector('#ls-fill') as HTMLElement;
-      this.progressText = this.overlay.querySelector('#ls-pct') as HTMLElement;
-      this.tipText = this.overlay.querySelector('#ls-tip') as HTMLElement;
-      this.diamonds = this.overlay.querySelectorAll('.ls-diamond');
 
-      // Fade out tap screen
-      this.initMusic();
+      this.progressBar  = document.getElementById('ls-fill');
+      this.progressText = document.getElementById('ls-pct');
+      this.tipText      = document.getElementById('ls-tip');
+      this.diamonds     = document.querySelectorAll('.ls-diamond');
 
-      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || 
-      /Android|iPhone|iPad|iPod|Touch/i.test(navigator.userAgent) ||
-      navigator.maxTouchPoints > 1 ||
-      window.innerWidth < 1024;
-      if (isMobile) {
-        const el = document.documentElement as any;
-        if (el.requestFullscreen) el.requestFullscreen();
-        else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+      this.startProgressAnimation();
+
+      if (this.isLoadFinished && !this.hideScheduled) {
+        // Loading finished before the user clicked AND nothing scheduled hide yet
+        // → we own the hide responsibility now
+        this.hideScheduled = true;
+        this.targetProgress = 100;
+        console.log('[LoadingScene] Scheduling hide from click handler (load already done)');
+        setTimeout(() => {
+          this.stopProgressAnimation();
+          this.updateProgress(100);
+          setTimeout(() => {
+            console.log('[LoadingScene] Calling hide() — click-handler path');
+            this.hide();
+          }, 1500);
+        }, 1200);
+      } else if (!this.isLoadFinished) {
+        // Still loading — just nudge the bar
+        this.targetProgress = 1;
       }
+
       startScreen.style.transition = 'opacity 0.6s ease';
       startScreen.style.opacity = '0';
       setTimeout(() => startScreen.remove(), 700);
     };
+
     startScreen.addEventListener('click', unlock, { once: true });
-    // startScreen.addEventListener('click', unlock);
-    // startScreen.addEventListener('touchstart', unlock);
   }
 
   // =============================
-  //  MUSIC SYSTEM
+  //  SMOOTH PROGRESS ANIMATION
   // =============================
-  private initMusic(): void {
-    try {
-      this.audio = new Audio('/sounds/1.MainTheme-320bit(chosic.com).mp3');
-      this.audio.loop = true;
-      this.audio.volume = 0;
-      this.audio.play().then(() => {
-        this.fadeIn();
-      }).catch((err) => {
-        console.warn('Audio play failed:', err);
-      });
+  private startProgressAnimation(): void {
+    if (this.animationRunning) return;
+    this.animationRunning = true;
 
-    } catch (err) {
-      console.warn('Audio init failed:', err);
+    const loop = () => {
+      if (!this.animationRunning) return;
+      const diff = this.targetProgress - this.currentProgress;
+      if (Math.abs(diff) > 0.05) {
+        this.currentProgress += diff * 0.04 + (diff > 0 ? 0.08 : 0);
+        if (this.currentProgress > this.targetProgress) this.currentProgress = this.targetProgress;
+        this.updateProgress(this.currentProgress);
+      } else if (this.currentProgress !== this.targetProgress) {
+        this.currentProgress = this.targetProgress;
+        this.updateProgress(this.currentProgress);
+      }
+      this.animFrame = requestAnimationFrame(loop);
+    };
+
+    this.animFrame = requestAnimationFrame(loop);
+  }
+
+  private stopProgressAnimation(): void {
+    this.animationRunning = false;
+    if (this.animFrame !== null) {
+      cancelAnimationFrame(this.animFrame);
+      this.animFrame = null;
     }
   }
 
-  private fadeIn(): void {
-    if (!this.audio) return;
+  // =============================
+  //  THREE.JS MANAGER LINK
+  // =============================
+  public attachToLoadingManager(manager: THREE.LoadingManager): void {
+    this.loadingManager = manager;
 
-    let vol = 0;
-    const interval = setInterval(() => {
-      vol += 0.02;
-      if (this.audio) this.audio.volume = Math.min(vol, 0.5);
+    manager.onProgress = (url, loaded, total) => {
+      const progress = total > 0 ? (loaded / total) * 100 : 0;
+      this.targetProgress = progress;
+      console.log(`Loading target: ${progress.toFixed(0)}% (${loaded}/${total})`);
+    };
 
-      if (vol >= 0.5) clearInterval(interval);
-    }, 100);
-  }
+    manager.onLoad = () => {
+      this.isLoadFinished = true;
+      this.targetProgress = 100;
+      console.log('[LoadingScene] onLoad fired. overlay=', !!this.overlay, 'hideScheduled=', this.hideScheduled);
 
-  private fadeOut(): void {
-    if (!this.audio) return;
+      if (this.hideScheduled) return; // already handled
 
-    let vol = this.audio.volume;
-    const interval = setInterval(() => {
-      vol -= 0.03;
-      if (this.audio) this.audio.volume = Math.max(vol, 0);
-
-      if (vol <= 0) {
-        clearInterval(interval);
-        this.audio?.pause();
-        this.audio = null;
+      if (this.overlay) {
+        // User already clicked — overlay exists, we schedule hide now
+        this.hideScheduled = true;
+        console.log('[LoadingScene] Scheduling hide from onLoad (overlay exists)');
+        setTimeout(() => {
+          this.stopProgressAnimation();
+          this.updateProgress(100);
+          setTimeout(() => {
+            console.log('[LoadingScene] Calling hide() — onLoad path');
+            this.hide();
+          }, 1500);
+        }, 1200);
       }
-    }, 80);
+      // If no overlay: do NOT set hideScheduled — let the click handler do it
+    };
   }
 
   // =============================
-  //  HTML + CSS
+  //  UI UPDATES
   // =============================
+  public updateProgress(progress: number): void {
+    const val = Math.min(Math.max(progress, 0), 100);
+
+    if (!this.progressBar) this.progressBar = document.getElementById('ls-fill');
+    if (!this.progressText) this.progressText = document.getElementById('ls-pct');
+    if (!this.tipText)      this.tipText      = document.getElementById('ls-tip');
+
+    if (this.progressBar)  this.progressBar.style.width   = `${val}%`;
+    if (this.progressText) this.progressText.innerText     = `${Math.round(val)}%`;
+
+    if (this.tipText) {
+      const idx = Math.floor((val / 100) * this.tips.length);
+      this.tipText.innerText = this.tips[Math.min(idx, this.tips.length - 1)];
+    }
+
+    if (this.diamonds) {
+      const activeIdx = Math.floor((val / 100) * 3);
+      this.diamonds.forEach((d, i) => d.classList.toggle('active', i <= activeIdx));
+    }
+  }
+
   private createOverlay(): HTMLElement {
     const el = document.createElement('div');
     el.id = 'loading-screen';
     el.innerHTML = `
       <style>
         #loading-screen {
-          position: fixed;
-          inset: 0;
-          z-index: 9999;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: flex-end;
-          padding-bottom: 80px;
-          font-family: 'Cairo', sans-serif;
-          overflow: hidden;
-          direction: rtl;
+          position: fixed; inset: 0; z-index: 9999; display: flex;
+          flex-direction: column; align-items: center; justify-content: flex-end;
+          padding-bottom: 80px; font-family: 'Cairo', sans-serif; direction: rtl;
         }
-
         #ls-bg {
-          position: absolute;
-          inset: 0;
+          position: absolute; inset: 0; background: #0a0f19;
           background-image: url('/images/loading-bg2.png');
-          background-size: cover;
-          background-position: center;
-          filter: brightness(0.55);
-          z-index: 0;
+          background-size: cover; background-position: center;
+          filter: brightness(0.4); z-index: 0;
         }
-
-        #ls-gradient {
-          position: absolute;
-          inset: 0;
-          background: linear-gradient(
-            to bottom,
-            transparent 30%,
-            rgba(10, 15, 25, 0.85) 100%
-          );
-          z-index: 1;
-        }
-
         #ls-content {
-          position: relative;
-          z-index: 2;
-          width: 100%;
-          max-width: 560px;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 16px;
-          padding: 0 32px;
+          position: relative; z-index: 2; width: 100%; max-width: 560px;
+          display: flex; flex-direction: column; align-items: center;
+          gap: 16px; padding: 0 32px;
         }
-
-        #ls-title {
-          color: #e8c97a;
-          font-size: 28px;
-          font-weight: 900;
-          letter-spacing: 4px;
-          text-align: center;
-          text-shadow: 0 0 30px rgba(232, 201, 122, 0.4);
-          margin: 0;
-        }
-
-        #ls-subtitle {
-          color: rgba(255,255,255,0.5);
-          font-size: 12px;
-          letter-spacing: 6px;
-          margin: -8px 0 0;
-        }
-
-        #ls-bar-wrap {
-          width: 100%;
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-        }
-
-        #ls-bar-labels {
-          display: flex;
-          justify-content: space-between;
-        }
-
-        .ls-bar-label {
-          color: rgba(255,255,255,0.4);
-          font-size: 10px;
-          letter-spacing: 3px;
-        }
-
-        #ls-pct {
-          color: #e8c97a;
-          font-size: 13px;
-          font-weight: 700;
-        }
-
-        #ls-bar-outer {
-          width: 100%;
-          height: 6px;
-          background: rgba(255,255,255,0.1);
-          border-radius: 2px;
-          overflow: hidden;
-          position: relative;
-        }
-
-        #ls-bar-outer::before {
-          content: '';
-          position: absolute;
-          inset: 0;
-          background: repeating-linear-gradient(
-            90deg,
-            rgba(255,255,255,0.03) 0px, rgba(255,255,255,0.03) 20px,
-            transparent 20px, transparent 40px
-          );
-        }
-
-        #ls-fill {
-          height: 100%;
-          width: 0%;
-          background: linear-gradient(90deg, #b8860b, #e8c97a, #fff5cc);
-          border-radius: 2px;
-          transition: width 0.25s ease;
-          position: relative;
-        }
-
-        #ls-fill::after {
-          content: '';
-          position: absolute;
-          right: -1px;
-          top: -4px;
-          width: 2px;
-          height: 14px;
-          background: #ffffff;
-          border-radius: 1px;
-          box-shadow: 0 0 8px #ffffff;
-        }
-
-        #ls-diamonds {
-          display: flex;
-          gap: 10px;
-          align-items: center;
-          margin-top: 4px;
-        }
-
-        .ls-line {
-          width: 40px;
-          height: 1px;
-          background: rgba(232, 201, 122, 0.25);
-        }
-
-        .ls-diamond {
-          width: 6px;
-          height: 6px;
-          background: #e8c97a;
-          transform: rotate(45deg);
-          opacity: 0.2;
-          transition: opacity 0.3s;
-        }
-
-        .ls-diamond.active {
-          opacity: 1;
-        }
-
-        #ls-tip {
-          color: rgba(255,255,255,0.3);
-          font-size: 12px;
-          text-align: center;
-        }
-
-        #loading-screen.fade-out {
-          opacity: 0;
-          transition: opacity 0.8s ease;
-          pointer-events: none;
-        }
+        #ls-bar-outer { width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden; }
+        #ls-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #b8860b, #e8c97a, #fff); transition: none; }
+        #ls-pct { color: #e8c97a; font-weight: 700; font-size: 14px; }
+        .ls-diamond { width: 6px; height: 6px; background: #e8c97a; transform: rotate(45deg); opacity: 0.2; transition: opacity 0.3s; }
+        .ls-diamond.active { opacity: 1; }
+        #ls-tip { color: rgba(255,255,255,0.5); font-size: 13px; margin-top: 5px; }
+        .fade-out { opacity: 0; transition: opacity 0.8s ease; pointer-events: none; }
       </style>
-
       <div id="ls-bg"></div>
-      <div id="ls-gradient"></div>
-
       <div id="ls-content">
-        <h1 id="ls-title">معارك مصر الجوية</h1>
-        <p id="ls-subtitle">١٤ أكتوبر ١٩٧٣</p>
-
-        <div id="ls-bar-wrap">
-          <div id="ls-bar-labels">
-            <span class="ls-bar-label">LOADING ASSETS</span>
-            <span id="ls-pct">0%</span>
-          </div>
-          <div id="ls-bar-outer">
-            <div id="ls-fill"></div>
-          </div>
+        <div style="display:flex; justify-content:space-between; width:100%; margin-bottom: 5px;">
+          <span style="color:rgba(255,255,255,0.4); font-size:10px; letter-spacing:2px;">LOADING SYSTEM</span>
+          <span id="ls-pct">0%</span>
         </div>
-
-        <div id="ls-diamonds">
-          <div class="ls-line"></div>
-          <div class="ls-diamond"></div>
-          <div class="ls-diamond"></div>
-          <div class="ls-diamond"></div>
-          <div class="ls-line"></div>
+        <div id="ls-bar-outer"><div id="ls-fill"></div></div>
+        <div style="display:flex; gap:12px; margin: 8px 0;">
+          <div class="ls-diamond"></div><div class="ls-diamond"></div><div class="ls-diamond"></div>
         </div>
-
-        <p id="ls-tip">جاري تحميل الخرائط...</p>
+        <p id="ls-tip">جاري بدء التشغيل...</p>
       </div>
     `;
-
     document.body.appendChild(el);
     return el;
   }
 
-  public updateProgress(progress: number): void {
-    if (!this.progressBar || !this.progressText || !this.tipText) return;
+  // =============================
+  //  AUDIO
+  // =============================
+  private initMusic(): void {
+    if (this.audio) return;
+    this.audio = new Audio('/sounds/1.MainTheme-320bit(chosic.com).mp3');
+    this.audio.loop = true;
 
-    const clamped = Math.min(Math.max(progress, 0), 100);
-
-    this.progressBar.style.width = clamped + '%';
-    this.progressText.textContent = Math.round(clamped) + '%';
-
-    const tipIndex = Math.floor((clamped / 100) * this.tips.length);
-    this.tipText.textContent = this.tips[Math.min(tipIndex, this.tips.length - 1)];
-
-    if (this.diamonds) {
-      const activeCount = Math.floor((clamped / 100) * 3);
-      this.diamonds.forEach((d, i) => {
-        d.classList.toggle('active', i <= activeCount);
-      });
+    if (this.pendingVolume !== null) {
+      this.audio.volume = this.pendingVolume;
+      this.audio.play().catch(e => console.warn('Audio blocked', e));
+    } else {
+      this.audio.volume = 0;
+      this.audio.play().then(() => this.fadeIn()).catch(e => console.warn('Audio blocked', e));
     }
   }
 
-  public attachToLoadingManager(manager: THREE.LoadingManager): void {
-    manager.onProgress = (_url, loaded, total) => {
-      const progress = (loaded / total) * 100;
-      this.updateProgress(progress);
-    };
-
-    manager.onLoad = () => {
-      this.updateProgress(100);
-      setTimeout(() => this.hide(), 600);
-    };
-
-    manager.onError = (url) => {
-      console.error('فشل تحميل:', url);
-    };
+  private fadeIn(): void {
+    let vol = 0;
+    const inv = setInterval(() => {
+      vol += 0.02;
+      if (this.audio) this.audio.volume = Math.min(vol, 0.5);
+      if (vol >= 0.5) clearInterval(inv);
+    }, 100);
   }
 
   public setVolume(volume: number): void {
-    if (this.audio) {
-      this.audio.volume = Math.min(Math.max(volume, 0), 1);
-    }
+    const clamped = Math.min(Math.max(volume, 0), 1);
+    this.pendingVolume = clamped;
+    if (this.audio) this.audio.volume = clamped;
   }
 
   public getAudio(): HTMLAudioElement | null {
-    console.log('Audio context state:', this.audio);
     return this.audio;
   }
 
   public hide(): void {
-    if (!this.overlay) return;
-
-    // this.fadeOut();
-    // this.overlay.classList.add('fade-out');
-
-    setTimeout(() => {
-      this.overlay?.remove();
-      if (this.onCompleteCallback) this.onCompleteCallback();
-    }, 800);
+    console.log('[LoadingScene] hide() called. overlay=', !!this.overlay, 'onCompleteCallback=', !!this.onCompleteCallback);
+    this.stopProgressAnimation();
+    if (this.overlay) {
+      this.overlay.classList.add('fade-out');
+      setTimeout(() => {
+        this.overlay?.remove();
+        this.overlay = null;
+        console.log('[LoadingScene] Overlay removed — firing onCompleteCallback');
+        if (this.onCompleteCallback) {
+          this.onCompleteCallback();
+        } else {
+          console.warn('[LoadingScene] onCompleteCallback is NULL — nothing will happen!');
+        }
+      }, 850);
+    } else {
+      console.warn('[LoadingScene] hide() called but overlay is already null');
+    }
   }
 
-  public onComplete(callback: () => void): void {
-    this.onCompleteCallback = callback;
+  public onComplete(cb: () => void): void {
+    console.log('[LoadingScene] onComplete registered');
+    this.onCompleteCallback = cb;
   }
 }
