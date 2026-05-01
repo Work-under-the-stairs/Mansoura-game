@@ -105,11 +105,11 @@ export class Engine {
       {
         skyExrUrl:       this.isMobile ? '/images/qwantani_afternoon_1k.exr' : '/images/qwantani_afternoon_2k.exr',
         terrainSize:     42000,
-        terrainSegments: this.isMobile ? 100 : 420,  // ← فرق ضخم جداً
-        // terrainSegments: 420,  // ← فرق ضخم جداً
+        terrainSegments: this.isMobile ? 100 : 420,  
+        // terrainSegments: 420,  
         riverWidth:      420,
-        cloudCount:      this.isMobile ? 3 : 10,    // ← سحب أقل
-        // cloudCount:      10,    // ← سحب أقل
+        cloudCount:      this.isMobile ? 3 : 10,  
+        // cloudCount:      10,    
       },
       this.renderer,
     );
@@ -132,7 +132,7 @@ export class Engine {
       this.cockpit,
       this.enemies,
       this.projectileManager,
-      this.notifications,       // ← wired in here
+      this.notifications,
     );
 
     this.setupLights();

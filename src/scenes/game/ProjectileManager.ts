@@ -200,7 +200,8 @@ export class ProjectileManager {
   private readonly isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
   private readonly BULLET_SPEED   = 4800;
   private readonly BULLET_LIFE    = 1.6;
-  private readonly TRACER_LENGTH  = 120;
+  // private readonly TRACER_LENGTH  = 120;
+  private readonly TRACER_LENGTH  = 400;
 
   private readonly MISSILE_SPEED  = 1800;
   private readonly MISSILE_ACCEL  = 220;
@@ -423,7 +424,8 @@ export class ProjectileManager {
       if (p.kind === 'bullet') {
         p.mesh.position.addScaledVector(p.velocity, delta);
 
-        const fadeRatio  = Math.min(1, p.life / (p.maxLife * 0.20));
+        // const fadeRatio  = Math.min(1, p.life / (p.maxLife * 0.20));
+        const fadeRatio  = Math.min(1, p.life / (p.maxLife * 0.60));
         const travelled  = p.velocity.length() * (p.maxLife - p.life);
         const streakLen  = Math.min(this.TRACER_LENGTH * ssf, travelled);
         const dir        = p.velocity.clone().normalize();
@@ -438,9 +440,10 @@ export class ProjectileManager {
             // tail: dim orange-red
             { r: 1.0 * 0.55 * fadeRatio, g: 0.50 * 0.35 * fadeRatio, b: 0.0 },
             // head: hot white-yellow  — boosted on large screens
-            { r: Math.min(1, 1.0 * ssf * fadeRatio), g: Math.min(1, 0.97 * ssf * 0.85 * fadeRatio), b: Math.min(1, 0.75 * ssf * 0.6 * fadeRatio) },
-          );
-          (p.tracerLine.material as THREE.LineBasicMaterial).opacity = Math.min(1, fadeRatio * ssf * 0.9);
+            // { r: Math.min(1, 1.0 * ssf * fadeRatio), g: Math.min(1, 0.97 * ssf * 0.85 * fadeRatio), b: Math.min(1, 0.75 * ssf * 0.6 * fadeRatio) },
+            { r: Math.min(1, 1.5 * fadeRatio), g: Math.min(1, 1.0 * fadeRatio), b: Math.min(1, 0.5 * fadeRatio) },          );
+          // (p.tracerLine.material as THREE.LineBasicMaterial).opacity = Math.min(1, fadeRatio * ssf * 0.9);
+          (p.tracerLine.material as THREE.LineBasicMaterial).opacity = Math.min(1, fadeRatio * ssf * 1.5);
         }
 
         // ── Glow line (slightly longer, softer colours) ──
@@ -450,9 +453,11 @@ export class ProjectileManager {
             p.glowLine.geometry,
             glowTail, head,
             { r: 0.8 * fadeRatio, g: 0.30 * fadeRatio, b: 0.0 },
-            { r: Math.min(1, 1.0 * ssf * fadeRatio), g: Math.min(1, 0.75 * ssf * fadeRatio), b: Math.min(1, 0.40 * ssf * fadeRatio) },
+            // { r: Math.min(1, 1.0 * ssf * fadeRatio), g: Math.min(1, 0.75 * ssf * fadeRatio), b: Math.min(1, 0.40 * ssf * fadeRatio) },
+            { r: Math.min(1, 1.5 * fadeRatio), g: Math.min(1, 1.0 * fadeRatio), b: Math.min(1, 0.5 * fadeRatio) },
           );
-          (p.glowLine.material as THREE.LineBasicMaterial).opacity = Math.min(1, 0.30 * ssf * fadeRatio);
+          // (p.glowLine.material as THREE.LineBasicMaterial).opacity = Math.min(1, 0.30 * ssf * fadeRatio);
+          (p.glowLine.material as THREE.LineBasicMaterial).opacity = Math.min(1, 0.70 * ssf * fadeRatio);
         }
 
         // ── NO headSprite — removed to avoid the square artifact ──

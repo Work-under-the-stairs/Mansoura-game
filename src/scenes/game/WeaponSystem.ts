@@ -20,9 +20,9 @@ const DEFAULT_CONFIG: WeaponConfig = {
 
 const GUN_BARRELS: THREE.Vector3[] = [
   new THREE.Vector3(10, -7, -50),
-  new THREE.Vector3(9.5, -7, -50),
-  new THREE.Vector3(10, -6.5, -50),
-  new THREE.Vector3(9.5, -6.5, -50),
+  new THREE.Vector3(9.8, -7, -50),
+  new THREE.Vector3(10, -6.8, -50),
+  new THREE.Vector3(9.8, -6.8, -50),
   new THREE.Vector3(9.8, -6.8, -50),
   // new THREE.Vector3(10, -7, -50),
   // new THREE.Vector3(9, -7, -50),
