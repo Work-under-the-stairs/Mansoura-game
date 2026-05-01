@@ -24,8 +24,8 @@ export class Engine {
   private notifications: NotificationSystem;
 
   private container: HTMLDivElement;
-  // private clock = new THREE.Clock();
-  private clock = new THREE.Timer();
+  private clock = new THREE.Clock();
+  // private clock = new THREE.Timer();
   private animationFrameId = 0;
   private mobileControls: MobileControls;
   private projectileManager: ProjectileManager;
@@ -60,15 +60,16 @@ export class Engine {
     document.body.appendChild(this.container);
 
     this.renderer = new THREE.WebGLRenderer({
-      antialias:              true,
-      // antialias:              !this.isMobile,
+      // antialias:              true,
+      antialias:              !this.isMobile,
       powerPreference:        'high-performance',
       // logarithmicDepthBuffer: true,
       logarithmicDepthBuffer: !this.isMobile,
     });
 
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    // this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    this.renderer.setPixelRatio(this.isMobile ? 1 : Math.min(window.devicePixelRatio, 1.5));
     this.renderer.toneMapping         = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.outputColorSpace    = THREE.SRGBColorSpace;
@@ -211,7 +212,8 @@ export class Engine {
 
     const sunLight = new THREE.DirectionalLight(0xfff3d0, 4);
     sunLight.position.set(-9000, 8500, -5000);
-    sunLight.castShadow = true;
+    // sunLight.castShadow = true;
+    sunLight.castShadow = !this.isMobile; // ← shadows off on mobile for performance
 
     // sunLight.shadow.mapSize.set(2048, 2048);
     sunLight.shadow.mapSize.set(
@@ -276,7 +278,7 @@ export class Engine {
   private animate = (): void => {
     this.animationFrameId = window.requestAnimationFrame(this.animate);
 
-    this.clock.update(); // ← ضيفي السطر ده
+    // this.clock.update(); // ← ضيفي السطر ده
 
     const delta = this.clock.getDelta();
 
