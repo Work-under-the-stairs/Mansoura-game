@@ -79,7 +79,15 @@ export class LoadingScene {
       this.progressText = document.getElementById('ls-pct');
       this.tipText      = document.getElementById('ls-tip');
       this.diamonds     = document.querySelectorAll('.ls-diamond');
-
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || 
+      /Android|iPhone|iPad|iPod|Touch/i.test(navigator.userAgent) ||
+      navigator.maxTouchPoints > 1 ||
+      window.innerWidth < 1024;
+      if (isMobile) {
+        const el = document.documentElement as any;
+        if (el.requestFullscreen) el.requestFullscreen();
+        else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+      }
       this.startProgressAnimation();
 
       if (this.isLoadFinished && !this.hideScheduled) {
