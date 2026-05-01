@@ -60,11 +60,11 @@ export class Engine {
     document.body.appendChild(this.container);
 
     this.renderer = new THREE.WebGLRenderer({
-      // antialias:              true,
-      antialias:              !this.isMobile,
+      antialias:              true,
+      // antialias:              !this.isMobile,
       powerPreference:        'high-performance',
-      // logarithmicDepthBuffer: true,
-      logarithmicDepthBuffer: !this.isMobile,
+      logarithmicDepthBuffer: true,
+      // logarithmicDepthBuffer: !this.isMobile,
     });
 
     this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -103,9 +103,11 @@ export class Engine {
       {
         skyExrUrl:       this.isMobile ? '/images/qwantani_afternoon_1k.exr' : '/images/qwantani_afternoon_2k.exr',
         terrainSize:     42000,
-        terrainSegments: this.isMobile ? 80 : 420,  // ← فرق ضخم جداً
+        // terrainSegments: this.isMobile ? 80 : 420,  // ← فرق ضخم جداً
+        terrainSegments: 420,  // ← فرق ضخم جداً
         riverWidth:      420,
-        cloudCount:      this.isMobile ? 3 : 10,    // ← سحب أقل
+        // cloudCount:      this.isMobile ? 3 : 10,    // ← سحب أقل
+        cloudCount:      10,    // ← سحب أقل
       },
       this.renderer,
     );
@@ -135,7 +137,7 @@ export class Engine {
     this.createEnvironment();
 
     // if (isMobile) this.optimizeForMobile();
-    applyMobileOptimizations(this.renderer, this.scene);
+    // applyMobileOptimizations(this.renderer, this.scene);
 
     window.addEventListener('resize', this.onWindowResize);
 
@@ -299,10 +301,10 @@ export class Engine {
 
     this.renderer.render(this.scene, this.camera);
 
-    if (!this.mobileOptimized && this.cockpit.model) {
-      this.optimizeForMobile();
-      this.mobileOptimized = true;
-    }
+    // if (!this.mobileOptimized && this.cockpit.model) {
+    //   this.optimizeForMobile();
+    //   this.mobileOptimized = true;
+    // }
   };
 
   public destroy(): void {
