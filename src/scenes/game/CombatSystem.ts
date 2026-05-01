@@ -414,7 +414,7 @@ export class CombatSystem {
       owner:    enemy,
     });
 
-    console.log(`🔫 Enemy fired ${isMissile ? 'MISSILE' : 'bullet'} | dist: ${Math.round(dist)}`);
+    // console.log(`🔫 Enemy fired ${isMissile ? 'MISSILE' : 'bullet'} | dist: ${Math.round(dist)}`);
   }
 
   // ── Enemy shot visuals ────────────────────────────────────────
@@ -522,7 +522,7 @@ export class CombatSystem {
         this.health.takeDamage(dmg);
         dead.push(s);
 
-        console.log(`🎯 PLAYER HIT -${dmg} HP → ${this.health.hp}`);
+        // console.log(`🎯 PLAYER HIT -${dmg} HP → ${this.health.hp}`);
 
         this.notifications.show({
           type:     s.isMissile ? 'warn' : 'info',
@@ -570,7 +570,7 @@ export class CombatSystem {
           // Hit flash
           this.flashEnemy(enemy, 0.15);
 
-          console.log(`💥 Enemy hit -${dmg} HP → ${enemy.userData.hp}`);
+          // console.log(`💥 Enemy hit -${dmg} HP → ${enemy.userData.hp}`);
 
           if (enemy.userData.hp <= 0) {
             this.explodeAndRemove(enemy);
@@ -594,7 +594,7 @@ export class CombatSystem {
     this.shootIntervals.delete(enemy.uuid);
     this.enemyManager.removeEnemy(enemy);
 
-    console.log('💀 Enemy destroyed');
+    // console.log('💀 Enemy destroyed');
 
     this.notifications.show({
       type:     'kill',

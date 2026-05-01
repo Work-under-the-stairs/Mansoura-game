@@ -26,6 +26,7 @@ export class World {
   // Reusable objects — avoids per-frame allocation
   private readonly _quat   = new THREE.Quaternion();
   private readonly _euler  = new THREE.Euler();
+  private headingWarnShown = false;
 
   constructor(
     scene: THREE.Scene,
@@ -99,31 +100,49 @@ export class World {
    * @param cockpitObject  The cockpit THREE.Object3D whose orientation defines
    *                       the heading.
    */
-  public update(
-    deltaTime: number,
-    playerPosition?: THREE.Vector3,
-    cockpitObject?: THREE.Object3D
-  ): void {
-    this.time += deltaTime;
+  // public update(
+  //   deltaTime: number,
+  //   playerPosition?: THREE.Vector3,
+  //   cockpitObject?: THREE.Object3D
+  // ): void {
+  //   this.time += deltaTime;
 
+  //   if (!this.miniMap) return;
+
+  //   // ── Position ────────────────────────────────────────────────────────────
+  //   if (playerPosition) {
+  //     this.miniMap.updatePlayerPosition(playerPosition.x, playerPosition.z);
+  //   }
+
+  //   // ── Heading ─────────────────────────────────────────────────────────────
+  //   if (cockpitObject) {
+  //     cockpitObject.updateMatrixWorld(true);
+  //     cockpitObject.getWorldQuaternion(this._quat);
+  //     this._euler.setFromQuaternion(this._quat, 'YXZ');
+  //     const headingRad = this._euler.y;
+  //     this.miniMap.updateHeading(headingRad);
+  //   } else {
+  //     // cockpitObject was NOT passed — arrow will never move!
+  //     // Check your main loop: world.update(delta, position, cockpit.model)
+  //     console.warn('[World] cockpitObject is missing from world.update() call!');
+  //   }
+  // }
+  public update(deltaTime: number, playerPosition?: THREE.Vector3, cockpitObject?: THREE.Object3D): void {
+    this.time += deltaTime;
     if (!this.miniMap) return;
 
-    // ── Position ────────────────────────────────────────────────────────────
     if (playerPosition) {
       this.miniMap.updatePlayerPosition(playerPosition.x, playerPosition.z);
     }
 
-    // ── Heading ─────────────────────────────────────────────────────────────
     if (cockpitObject) {
       cockpitObject.updateMatrixWorld(true);
       cockpitObject.getWorldQuaternion(this._quat);
       this._euler.setFromQuaternion(this._quat, 'YXZ');
-      const headingRad = this._euler.y;
-      this.miniMap.updateHeading(headingRad);
-    } else {
-      // cockpitObject was NOT passed — arrow will never move!
-      // Check your main loop: world.update(delta, position, cockpit.model)
-      console.warn('[World] cockpitObject is missing from world.update() call!');
+      this.miniMap.updateHeading(this._euler.y);
+    } else if (!this.headingWarnShown) {
+      console.warn('[World] cockpitObject is missing!');
+      this.headingWarnShown = true; // ← مرة واحدة بس
     }
   }
 

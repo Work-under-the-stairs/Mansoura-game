@@ -195,6 +195,7 @@ export class ProjectileManager {
   private projectiles: Projectile[] = [];
   private smokePuffs:  SmokePuff[]  = [];
 
+  private readonly isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
   private readonly BULLET_SPEED   = 4800;
   private readonly BULLET_LIFE    = 1.6;
   private readonly TRACER_LENGTH  = 120;
@@ -202,7 +203,8 @@ export class ProjectileManager {
   private readonly MISSILE_SPEED  = 1800;
   private readonly MISSILE_ACCEL  = 220;
   private readonly MISSILE_LIFE   = 8.0;
-  private readonly SMOKE_INTERVAL = 0.028;
+  // private readonly SMOKE_INTERVAL = 0.028;
+  private readonly SMOKE_INTERVAL = this.isMobile ? 0.15 : 0.028;
   private readonly SMOKE_LIFE_MAX = 2.2;
 
   constructor(private scene: THREE.Scene) {}
