@@ -123,12 +123,19 @@ export class NotificationSystem {
   }
 
   /* 🔊 single sound */
+  // private playSound(): void {
+  //   try {
+  //     const audio = new Audio(SOUND);
+  //     audio.volume = 0.6;
+  //     audio.play().catch(() => {});
+  //   } catch {}
+  // }
+  private audio = new Audio(SOUND); // ← مرة واحدة بس
+
   private playSound(): void {
-    try {
-      const audio = new Audio(SOUND);
-      audio.volume = 0.6;
-      audio.play().catch(() => {});
-    } catch {}
+    this.audio.currentTime = 0;
+    this.audio.volume = 0.6;
+    this.audio.play().catch(() => {});
   }
 
   public destroy(): void {

@@ -372,6 +372,8 @@ export class MiniMap {
     while (deviation >  Math.PI) deviation -= 2 * Math.PI;
     while (deviation < -Math.PI) deviation += 2 * Math.PI;
 
+    if (Math.abs(deviation - this.currentDeviation) < 0.001) return;
+
     this.currentDeviation = deviation;
     this.drawArrow(deviation);
   }

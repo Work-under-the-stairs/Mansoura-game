@@ -6,10 +6,12 @@ import { ProjectileManager } from './ProjectileManager';
 // ─────────────────────────────────────────────
 
 /** Bullets per second per enemy. */
-const ENEMY_BULLET_FIRE_RATE = 50.0; // Significantly increased for fighting game speed
+// const ENEMY_BULLET_FIRE_RATE = 50.0; // Significantly increased for fighting game speed
+const ENEMY_BULLET_FIRE_RATE = 3.0; // Significantly increased for fighting game speed
 
 /** Missiles per second per enemy. */
-const ENEMY_MISSILE_FIRE_RATE = 20.0; // Significantly increased for fighting game speed
+// const ENEMY_MISSILE_FIRE_RATE = 20.0; // Significantly increased for fighting game speed
+const ENEMY_MISSILE_FIRE_RATE = 0.3; // Significantly increased for fighting game speed
 
 /** Local offsets (relative to enemy model) where bullets emerge. */
 const ENEMY_GUN_BARRELS: THREE.Vector3[] = [
