@@ -9,6 +9,7 @@ import { ProjectileManager } from './ProjectileManager';
 import { CombatSystem } from './CombatSystem';
 import { NotificationSystem } from './NotificationSystem';
 import { applyMobileOptimizations } from '../../utils/MobileOptimizer';
+import { MissionController } from './MissionController';
 
 export class Engine {
   private loadingScene: LoadingScene;
@@ -35,6 +36,7 @@ export class Engine {
   private onExitCallback: (() => void) | null = null;
   private readyCallback: (() => void) | null = null;
   private animationStarted = false;
+  private levelStarted = false;
 
   constructor(loadingScene: LoadingScene) {
     this.loadingScene   = loadingScene;
@@ -151,6 +153,8 @@ export class Engine {
     window.addEventListener('resize', this.onWindowResize);
 
     this.hide();
+
+    (window as any).missionController = new MissionController(this);
   }
 
   // =====================
@@ -291,6 +295,13 @@ export class Engine {
     if (!this.mobileOptimized && this.cockpit.model) {
       this.optimizeForMobile();
       this.mobileOptimized = true;
+    }
+
+    if (!this.levelStarted && this.cockpit.model) {
+      if ((window as any).missionController) {
+        (window as any).missionController.start();
+        this.levelStarted = true;
+      }
     }
   };
 

@@ -1,13 +1,13 @@
-import { Engine } from './game/Engine';
+import { Engine } from './Engine';
 
 enum MissionState {
   START,
-  FIRST_WAVE,    // طيارتين
-  SOLITARY_PLANE, // طيارة لوحدها
-  SUPPORT_DECISION_SALHIA, // اختيار الصالحية
-  SUPPORT_DECISION_TANTA,  // اختيار طنطا
+  FIRST_WAVE,
+  SOLITARY_PLANE,
+  SUPPORT_DECISION_SALHIA,
+  SUPPORT_DECISION_TANTA,
   APPROACHING_MANSOURA,
-  MANSOURA_BATTLE, // المعركة الكبرى (6 طيارات)
+  MANSOURA_BATTLE,
   VICTORY
 }
 
@@ -25,79 +25,78 @@ export class MissionController {
   private async runStateLogic() {
     switch (this.state) {
       case MissionState.START:
-        // 1. رسالة التوجه للمنصورة
         this.engine.notif.show({
           type: 'info',
           title: 'أوامر القيادة',
           msg: 'توجه حالاً إلى المنصورة للمساعدة في المعركة!',
           duration: 5000
         });
-
-        // انتظر ثواني ثم اظهر الأعداء
         setTimeout(() => {
           this.state = MissionState.FIRST_WAVE;
-          this.spawnWave(2); // ظهور طيارتين
+          this.spawnWave(2);
         }, 6000);
         break;
 
       case MissionState.SOLITARY_PLANE:
+        // ✅ إضافة وقت قبل ظهور الطيارة الثالثة
         setTimeout(() => {
           this.engine.notif.show({
-            type: 'warn',
-            title: 'تحذير',
-            msg: 'طيارة معادية تقترب من الخلف!',
-            duration: 3000
+            type: 'warn', title: 'تحذير', msg: 'طيارة معادية تقترب من الخلف!', duration: 3000
           });
           this.spawnWave(1);
-        }, 4000);
+        }, 3000); 
         break;
 
       case MissionState.SUPPORT_DECISION_SALHIA:
-        this.showDecision('نحتاج إلى دعم من السرب الخاص بك في الصالحية', (count) => {
-          this.engine.notif.show({
-            type: 'success',
-            title: 'تم الإرسال',
-            msg: `تم إرسال ${count} طائرات إلى الصالحية`,
+        // ✅ إضافة وقت بين موت الطيارة ورسالة الصالحية
+        setTimeout(() => {
+          this.showDecision('دعم مطلوب: الصالحية', 'أرسل سرب دعم إلى منطقة الصالحية الآن؟', (count) => {
+            this.engine.notif.show({
+              type: 'success', title: 'تم الإرسال', msg: `تم توجيه ${count} طائرات للصالحية`,
+            });
+            this.state = MissionState.SUPPORT_DECISION_TANTA;
+            this.runStateLogic();
           });
-          this.state = MissionState.SUPPORT_DECISION_TANTA;
-          this.runStateLogic();
-        });
+        }, 4000); // 4 ثواني هدوء
         break;
 
       case MissionState.SUPPORT_DECISION_TANTA:
-        this.showDecision('نحتاج إلى دعم في طنطا', (count) => {
-          this.engine.notif.show({
-            type: 'success',
-            title: 'تم الإرسال',
-            msg: `تم إرسال ${count} طائرات إلى طنطا`,
+        // ✅ إضافة وقت بين قرار الصالحية وقرار طنطا
+        setTimeout(() => {
+          this.showDecision('دعم مطلوب: طنطا', 'تحتاج قاعدة طنطا إلى مساندة فورية!', (count) => {
+            this.engine.notif.show({
+              type: 'success', title: 'تم الإرسال', msg: `تم توجيه ${count} طائرات لطنطا`,
+            });
+            this.state = MissionState.APPROACHING_MANSOURA;
+            this.runStateLogic();
           });
-          this.state = MissionState.APPROACHING_MANSOURA;
-          this.runStateLogic();
-        });
+        }, 5000); // 5 ثواني فاصل
         break;
 
       case MissionState.APPROACHING_MANSOURA:
-        this.engine.notif.show({ type: 'info', title: 'ملاحة', msg: 'أنت تقترب من هدفك في المنصورة...' });
+        // ✅ إضافة وقت قبل رسالة الاقتراب من المنصورة
         setTimeout(() => {
-          this.engine.notif.show({ type: 'warn', title: 'وصلت', msg: 'لقد وصلت إلى المنصورة! استعد!' });
-          this.state = MissionState.MANSOURA_BATTLE;
-          this.enemyKilledCount = 0;
-          this.spawnWave(3); // ابدأ بـ 3 طيارات
-        }, 5000);
+          this.engine.notif.show({ type: 'info', title: 'ملاحة', msg: 'أنت تقترب من هدفك في المنصورة...' });
+          setTimeout(() => {
+            this.engine.notif.show({ type: 'warn', title: 'وصلت', msg: 'لقد وصلت إلى المنصورة! استعد للمعركة الكبرى!' });
+            this.state = MissionState.MANSOURA_BATTLE;
+            this.enemyKilledCount = 0;
+            this.spawnWave(3);
+          }, 6000);
+        }, 4000);
         break;
     }
   }
 
-  // دالة لمراقبة القتلى وتحديث الليفل
   public onEnemyKilled() {
     this.totalInWaveKilled++;
     
-    if (this.state === MissionState.FIRST_WAVE && this.totalInWaveKilled === 2) {
+    if (this.state === MissionState.FIRST_WAVE && this.totalInWaveKilled >= 2) {
       this.totalInWaveKilled = 0;
       this.state = MissionState.SOLITARY_PLANE;
       this.runStateLogic();
     } 
-    else if (this.state === MissionState.SOLITARY_PLANE && this.totalInWaveKilled === 1) {
+    else if (this.state === MissionState.SOLITARY_PLANE && this.totalInWaveKilled >= 1) {
       this.totalInWaveKilled = 0;
       this.state = MissionState.SUPPORT_DECISION_SALHIA;
       this.runStateLogic();
@@ -105,47 +104,63 @@ export class MissionController {
     else if (this.state === MissionState.MANSOURA_BATTLE) {
       this.enemyKilledCount++;
       if (this.enemyKilledCount < 6) {
-        this.spawnWave(1); // كل ما واحدة تموت تظهر واحدة جديدة لغاية ما يوصلوا 6
+        setTimeout(() => this.spawnWave(1), 2000); // تأخير بسيط بين كل طيارة تظهر في المعركة الكبرى
       } else {
-        this.victory();
+        setTimeout(() => this.victory(), 3000);
       }
     }
   }
 
   private spawnWave(count: number) {
-    // هنا هنستخدم الـ EnemyManager اللي عندك لعمل Spawn
+    this.totalInWaveKilled = 0; 
     for(let i=0; i<count; i++) {
         (this.engine as any).enemies.spawnEnemy(); 
     }
   }
 
-  private showDecision(text: string, onSelect: (count: number) => void) {
-    const overlay = document.createElement('div');
-    overlay.style.cssText = `
-      position: fixed; inset: 0; background: rgba(0,0,0,0.7);
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
-      z-index: 10000; color: white; font-family: 'Cairo', sans-serif;
+  // ✅ نظام اتخاذ القرار بتصميم يشبه النوتفيكيشن
+  private showDecision(title: string, text: string, onSelect: (count: number) => void) {
+    const card = document.createElement('div');
+    card.id = 'decision-card';
+    card.style.cssText = `
+      position: fixed; top: 120px; right: 12px;
+      width: 280px; background: rgba(15, 15, 25, 0.95);
+      border-left: 3px solid #378ADD; border-radius: 12px;
+      padding: 16px; color: white; font-family: sans-serif;
+      z-index: 100000; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      backdrop-filter: blur(10px); animation: slideIn 0.4s ease-out;
+      direction: rtl;
     `;
-    overlay.innerHTML = `
-      <h2 style="margin-bottom: 20px; text-align: center;">${text}</h2>
-      <div style="display: flex; gap: 20px;">
-        <button id="btn-1" style="padding: 10px 30px; cursor: pointer;">طائرة واحدة</button>
-        <button id="btn-2" style="padding: 10px 30px; cursor: pointer;">طائرتان</button>
+
+    card.innerHTML = `
+      <style>
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        .decision-btn {
+          margin-top: 12px; padding: 6px 15px; background: #378ADD;
+          border: none; color: white; border-radius: 4px; cursor: pointer;
+          font-weight: bold; font-size: 11px; transition: 0.2s;
+        }
+        .decision-btn:hover { background: #4ca1f5; }
+      </style>
+      <div style="font-weight: bold; color: #85B7EB; font-size: 13px; margin-bottom: 5px;">${title}</div>
+      <div style="font-size: 11px; color: #aab2c5; line-height: 1.5;">${text}</div>
+      <div style="display: flex; gap: 10px;">
+        <button class="decision-btn" id="opt-1">طائرة واحدة</button>
+        <button class="decision-btn" id="opt-2">طائرتان</button>
       </div>
     `;
-    document.body.appendChild(overlay);
 
-    overlay.querySelector('#btn-1')?.addEventListener('click', () => { overlay.remove(); onSelect(1); });
-    overlay.querySelector('#btn-2')?.addEventListener('click', () => { overlay.remove(); onSelect(2); });
+    document.body.appendChild(card);
+
+    card.querySelector('#opt-1')?.addEventListener('click', () => { card.remove(); onSelect(1); });
+    card.querySelector('#opt-2')?.addEventListener('click', () => { card.remove(); onSelect(2); });
   }
 
   private victory() {
     this.engine.notif.show({
-      type: 'success',
-      title: 'نصر مبيناً',
+      type: 'success', title: 'نصر مبيناً',
       msg: 'تم دحر العدو بنجاح في المنصورة! انتظر الأوامر القادمة...',
       duration: 10000
     });
-    // هنا ممكن تظهري شاشة Victory
   }
 }

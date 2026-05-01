@@ -266,10 +266,10 @@ export class CombatSystem {
   private readonly MISSILE_SPEED    =  5_000;
   private readonly BULLET_LIFE      = 10.0;
   private readonly MISSILE_LIFE     = 12.0;
-  private readonly BULLET_DAMAGE    = 6;
-  private readonly MISSILE_DAMAGE   = 22;
-  // private readonly BULLET_DAMAGE    = 3;
-  // private readonly MISSILE_DAMAGE   = 10;
+  // private readonly BULLET_DAMAGE    = 6;
+  // private readonly MISSILE_DAMAGE   = 22;
+  private readonly BULLET_DAMAGE    = 3;
+  private readonly MISSILE_DAMAGE   = 10;
   private readonly HIT_R_BULLET     = 500;
   private readonly HIT_R_MISSILE    = 500;
   private readonly SHOOT_INTERVAL_MIN = 2.0;  // s
@@ -670,22 +670,26 @@ export class CombatSystem {
   //   });
   // }
   private explodeAndRemove(enemy: THREE.Object3D): void {
-  this.spawnExplosion(enemy.position.clone());
+    this.spawnExplosion(enemy.position.clone());
 
-  // امسح الطلقات بتاعته
-  const toRemove = this.shots.filter(s => s.owner === enemy);
-  for (const s of toRemove) this.scene.remove(s.mesh);
-  this.shots = this.shots.filter(s => s.owner !== enemy);
-  this.cooldowns.delete(enemy.uuid);
-  this.shootIntervals.delete(enemy.uuid);
+    // امسح الطلقات بتاعته
+    const toRemove = this.shots.filter(s => s.owner === enemy);
+    for (const s of toRemove) this.scene.remove(s.mesh);
+    this.shots = this.shots.filter(s => s.owner !== enemy);
+    this.cooldowns.delete(enemy.uuid);
+    this.shootIntervals.delete(enemy.uuid);
 
-  // وقوع لتحت ثم اختفاء
-  this.startDeathFall(enemy);
+    // وقوع لتحت ثم اختفاء
+    this.startDeathFall(enemy);
 
-  this.notifications.show({
-    type: 'kill', title: 'BANDIT DOWN',
-    msg: 'Target eliminated', duration: 3500,
-  });
+    this.notifications.show({
+      type: 'kill', title: 'BANDIT DOWN',
+      msg: 'Target eliminated', duration: 3500,
+    });
+
+    if ((window as any).missionController) {
+      (window as any).missionController.onEnemyKilled();
+  }
 }
 
 private startDeathFall(enemy: THREE.Object3D): void {

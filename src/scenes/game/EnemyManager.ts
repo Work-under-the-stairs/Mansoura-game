@@ -81,9 +81,9 @@ export class EnemyManager {
         if (this._cockpitPos.z === 0) return false;
 
         this.positionCaptured = true;
-        for (let i = 0; i < this.TOTAL_ENEMIES; i++) {
-            this.spawnQueue.push(this.elapsedTime + i * this.SPAWN_INTERVAL);
-        }
+        // for (let i = 0; i < this.TOTAL_ENEMIES; i++) {
+        //     this.spawnQueue.push(this.elapsedTime + i * this.SPAWN_INTERVAL);
+        // }
         return true;
     }
 
