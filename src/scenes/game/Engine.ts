@@ -60,21 +60,19 @@ export class Engine {
     document.body.appendChild(this.container);
 
     this.renderer = new THREE.WebGLRenderer({
-      // antialias:              true,
-      antialias:              !this.isMobile,
+      antialias:              true,
+      // antialias:              !this.isMobile,
       powerPreference:        'high-performance',
-      // logarithmicDepthBuffer: true,
-      logarithmicDepthBuffer: !this.isMobile,
+      logarithmicDepthBuffer: true,
+      // logarithmicDepthBuffer: !this.isMobile,
     });
 
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    // this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-    this.renderer.setPixelRatio(this.isMobile ? 1 : Math.min(window.devicePixelRatio, 1.5));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.toneMapping         = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.outputColorSpace    = THREE.SRGBColorSpace;
-    // this.renderer.shadowMap.enabled   = true;
-    this.renderer.shadowMap.enabled = !this.isMobile;
+    this.renderer.shadowMap.enabled   = true;
     this.renderer.shadowMap.type      = THREE.PCFSoftShadowMap;
 
     this.container.appendChild(this.renderer.domElement);
@@ -303,10 +301,10 @@ export class Engine {
 
     this.renderer.render(this.scene, this.camera);
 
-    if (!this.mobileOptimized && this.cockpit.model) {
-      this.optimizeForMobile();
-      this.mobileOptimized = true;
-    }
+    // if (!this.mobileOptimized && this.cockpit.model) {
+    //   this.optimizeForMobile();
+    //   this.mobileOptimized = true;
+    // }
   };
 
   public destroy(): void {
