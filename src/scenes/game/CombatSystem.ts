@@ -252,6 +252,43 @@ interface EnemyShot {
   owner:     THREE.Object3D;
 }
 
+// ✅ في أول الـ class — أضف الـ interfaces دي
+interface FallingEnemy {
+  obj:      THREE.Object3D;
+  elapsed:  number;
+  duration: number;
+  fallSpeed: number;
+  spinSpeed: number;
+}
+
+interface ExplosionParticle {
+  sprite:    THREE.Sprite;
+  mat:       THREE.SpriteMaterial;
+  elapsed:   number;
+  duration:  number;
+  startSize: number;
+  opacity:   number;
+}
+
+// ✅ أضف فوق الـ class
+interface PooledBullet {
+  group:   THREE.Group;
+  glow:    THREE.Sprite;
+  glowMat: THREE.SpriteMaterial;
+  tail:    THREE.Line;
+  tailMat: THREE.LineBasicMaterial;
+  inUse:   boolean;
+}
+
+interface PooledMissile {
+  group:      THREE.Group;
+  glow:       THREE.Sprite;
+  glowMat:    THREE.SpriteMaterial;
+  exhaust:    THREE.Sprite;
+  exhaustMat: THREE.SpriteMaterial;
+  inUse:      boolean;
+}
+
 
 // ───────────────────────────────────────────────────────────────
 //  CombatSystem  — the one file your teammate doesn't need to touch
@@ -280,8 +317,8 @@ export class CombatSystem {
   private readonly PLAYER_MISSILE_DMG  = 40;
   // private readonly ENEMY_HIT_R_BULLET  = 200;
   // private readonly ENEMY_HIT_R_MISSILE = 550;
-  private readonly ENEMY_HIT_R_BULLET  = 3000;
-  private readonly ENEMY_HIT_R_MISSILE = 3000;
+  private readonly ENEMY_HIT_R_BULLET  = 500;
+  private readonly ENEMY_HIT_R_MISSILE = 600;
 
   // ── Shared geometry / material for enemy projectiles ──────────
   private readonly bulletGeo:   THREE.CylinderGeometry;
@@ -295,6 +332,23 @@ export class CombatSystem {
   /** Per-enemy shoot cooldown — keyed by object uuid */
   private cooldowns     = new Map<string, number>();
   private shootIntervals= new Map<string, number>();
+
+  private fallingEnemies:    FallingEnemy[]      = [];
+  private explosionParticles: ExplosionParticle[] = [];
+
+  // ✅ أضف مع باقي المتغيرات
+  private bulletPool:  PooledBullet[]  = [];
+  private missilePool: PooledMissile[] = [];
+
+  private readonly BULLET_POOL_SIZE  = 40;
+  private readonly MISSILE_POOL_SIZE = 10;
+
+  // ✅ في أول الـ class — أضف ثابت واحد بس
+  private readonly ENEMY_HIT_RADIUS_SQ_BULLET  = 500 * 500;   // مربع المسافة — بنتجنب sqrt
+  private readonly ENEMY_HIT_RADIUS_SQ_MISSILE = 600 * 600;
+
+  // ✅ reusable vector — مش بنعمل new كل frame (ده جزء من مشكلة ⑤ كمان)
+  private readonly _diffVec = new THREE.Vector3();
 
   constructor(
     private scene:             THREE.Scene,
@@ -334,7 +388,74 @@ export class CombatSystem {
       blending:    THREE.AdditiveBlending,
       depthWrite:  false,
     });
+    this.initPools();
   }
+
+  // ✅ دالة جديدة — اعمل كل الـ meshes مرة واحدة عند البداية
+private initPools(): void {
+  // ── Bullet pool ──────────────────────────────────────
+  const tailGeo = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(0, 0, 14),
+    new THREE.Vector3(0, 0, 55),
+  ]);
+
+  for (let i = 0; i < this.BULLET_POOL_SIZE; i++) {
+    const group = new THREE.Group();
+
+    const core = new THREE.Mesh(this.bulletGeo, this.bulletMat);
+    group.add(core);
+
+    const glowMat = new THREE.SpriteMaterial({
+      color: 0xff7722, transparent: true, opacity: 0.70,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    const glow = new THREE.Sprite(glowMat);
+    glow.scale.set(18, 18, 1);
+    group.add(glow);
+
+    const tailMat = new THREE.LineBasicMaterial({
+      color: 0xff8844, transparent: true, opacity: 0.65,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    const tail = new THREE.Line(tailGeo, tailMat);
+    group.add(tail);
+
+    group.visible = false;  // مخفي لحد ما يتستخدم
+    this.bulletPool.push({ group, glow, glowMat, tail, tailMat, inUse: false });
+  }
+
+  // ── Missile pool ─────────────────────────────────────
+  for (let i = 0; i < this.MISSILE_POOL_SIZE; i++) {
+    const group = new THREE.Group();
+
+    const body = new THREE.Mesh(this.missileBody, this.missileMat);
+    group.add(body);
+
+    const glowMat = new THREE.SpriteMaterial({
+      color: 0xff4400, transparent: true, opacity: 0.55,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    const glow = new THREE.Sprite(glowMat);
+    glow.scale.set(50, 50, 1);
+    group.add(glow);
+
+    const exhaustMat = new THREE.SpriteMaterial({
+      color: 0xffaa00, transparent: true, opacity: 0.40,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    const exhaust = new THREE.Sprite(exhaustMat);
+    exhaust.scale.set(22, 80, 1);
+    exhaust.position.set(0, 0, 45);
+    group.add(exhaust);
+
+    group.visible = false;
+    this.missilePool.push({ group, glow, glowMat, exhaust, exhaustMat, inUse: false });
+  }
+
+  // ✅ أضف كل الـ pool objects للـ scene مرة واحدة
+  for (const b of this.bulletPool)  this.scene.add(b.group);
+  for (const m of this.missilePool) this.scene.add(m.group);
+}
 
   // ── Public update — call from Engine.animate() ────────────────
   public showHUD(): void {
@@ -357,6 +478,9 @@ export class CombatSystem {
     this.updateEnemyShooting(delta, cockpitPos);
     this.updateEnemyShots(delta, cockpitPos);
     this.checkPlayerShotsHitEnemies();
+
+    this.updateFallingEnemies(delta);   // ✅ أضف دي
+    this.updateExplosions(delta); 
   }
 
   public dispose(): void {
@@ -368,6 +492,22 @@ export class CombatSystem {
     this.missileMat.dispose();
     this.missileGlow.dispose();
     this.health.dispose();
+
+    this.explosionParticles = [];
+    this.fallingEnemies     = [];
+
+    for (const b of this.bulletPool) {
+      this.scene.remove(b.group);
+      b.glowMat.dispose();
+      b.tailMat.dispose();
+    }
+    for (const m of this.missilePool) {
+      this.scene.remove(m.group);
+      m.glowMat.dispose();
+      m.exhaustMat.dispose();
+    }
+    this.bulletPool  = [];
+    this.missilePool = [];
   }
 
   // ── Enemy shooting AI ─────────────────────────────────────────
@@ -396,124 +536,195 @@ export class CombatSystem {
     }
   }
 
-  private fireEnemyShot(
-    enemy:      THREE.Object3D,
-    targetPos:  THREE.Vector3,
-    dist:       number,
-  ): void {
-    const origin = enemy.position.clone();
+  // private fireEnemyShot(
+  //   enemy:      THREE.Object3D,
+  //   targetPos:  THREE.Vector3,
+  //   dist:       number,
+  // ): void {
+  //   const origin = enemy.position.clone();
 
-    // Predictive lead: where will the player be when bullet arrives?
-    const travelTime = dist / this.BULLET_SPEED;
-    const playerFwd  = this.cockpit.model
-      ? new THREE.Vector3(0, 0, -1).applyQuaternion(this.cockpit.model.quaternion)
-      : new THREE.Vector3();
-    const speed      = this.cockpit.currentSpeed ?? 255;
-    // const aimPos     = targetPos.clone().addScaledVector(playerFwd, speed * travelTime * 0.55);
-    // const playerVelocity = this.cockpit.getVelocityVector(); // متجه حقيقي (x, y, z)
-    const playerVelocity = playerFwd.multiplyScalar(speed);
-    const aimPos = targetPos.clone().addScaledVector(playerVelocity, travelTime);
+  //   // Predictive lead: where will the player be when bullet arrives?
+  //   const travelTime = dist / this.BULLET_SPEED;
+  //   const playerFwd  = this.cockpit.model
+  //     ? new THREE.Vector3(0, 0, -1).applyQuaternion(this.cockpit.model.quaternion)
+  //     : new THREE.Vector3();
+  //   const speed      = this.cockpit.currentSpeed ?? 255;
+  //   // const aimPos     = targetPos.clone().addScaledVector(playerFwd, speed * travelTime * 0.55);
+  //   // const playerVelocity = this.cockpit.getVelocityVector(); // متجه حقيقي (x, y, z)
+  //   const playerVelocity = playerFwd.multiplyScalar(speed);
+  //   const aimPos = targetPos.clone().addScaledVector(playerVelocity, travelTime);
 
-    // عشان متخليش العدو "أسطوري" وميغلطش أبدًا، ضيف شوية عشوائية بعد الحساب الصح
-    const errorMargin = 0.02;
-    aimPos.x += (Math.random() - 0.5) * dist * errorMargin;
+  //   // عشان متخليش العدو "أسطوري" وميغلطش أبدًا، ضيف شوية عشوائية بعد الحساب الصح
+  //   const errorMargin = 0.02;
+  //   aimPos.x += (Math.random() - 0.5) * dist * errorMargin;
 
-    const spread = 0.04;
-    const dir    = aimPos.sub(origin).normalize();
-    dir.x += (Math.random() - 0.5) * spread;
-    dir.y += (Math.random() - 0.5) * spread;
-    dir.normalize();
+  //   const spread = 0.04;
+  //   const dir    = aimPos.sub(origin).normalize();
+  //   dir.x += (Math.random() - 0.5) * spread;
+  //   dir.y += (Math.random() - 0.5) * spread;
+  //   dir.normalize();
 
-    const isMissile = dist < 40_000 && Math.random() < 0.20;
+  //   const isMissile = dist < 40_000 && Math.random() < 0.20;
 
-    // Build visible mesh
-    const mesh = isMissile
-      ? this.buildMissileMesh(dir)
-      : this.buildBulletMesh(dir);
-    mesh.position.copy(origin);
-    this.scene.add(mesh);
+  //   // Build visible mesh
+  //   const mesh = isMissile
+  //     ? this.buildMissileMesh(dir)
+  //     : this.buildBulletMesh(dir);
+  //   mesh.position.copy(origin);
+  //   this.scene.add(mesh);
 
-    this.shots.push({
-      mesh,
-      velocity: dir.clone().multiplyScalar(isMissile ? this.MISSILE_SPEED : this.BULLET_SPEED),
-      life:     isMissile ? this.MISSILE_LIFE : this.BULLET_LIFE,
-      isMissile,
-      owner:    enemy,
-    });
+  //   this.shots.push({
+  //     mesh,
+  //     velocity: dir.clone().multiplyScalar(isMissile ? this.MISSILE_SPEED : this.BULLET_SPEED),
+  //     life:     isMissile ? this.MISSILE_LIFE : this.BULLET_LIFE,
+  //     isMissile,
+  //     owner:    enemy,
+  //   });
 
-    // console.log(`🔫 Enemy fired ${isMissile ? 'MISSILE' : 'bullet'} | dist: ${Math.round(dist)}`);
+  //   // console.log(`🔫 Enemy fired ${isMissile ? 'MISSILE' : 'bullet'} | dist: ${Math.round(dist)}`);
+  // }
+  private fireEnemyShot(enemy: THREE.Object3D, targetPos: THREE.Vector3, dist: number): void {
+  const origin = enemy.position.clone();
+
+  const travelTime     = dist / this.BULLET_SPEED;
+  const playerFwd      = this.cockpit.model
+    ? new THREE.Vector3(0, 0, -1).applyQuaternion(this.cockpit.model.quaternion)
+    : new THREE.Vector3();
+  const speed          = this.cockpit.currentSpeed ?? 255;
+  const playerVelocity = playerFwd.multiplyScalar(speed);
+  const aimPos         = targetPos.clone().addScaledVector(playerVelocity, travelTime);
+
+  aimPos.x += (Math.random() - 0.5) * dist * 0.02;
+
+  const dir = aimPos.sub(origin).normalize();
+  dir.x += (Math.random() - 0.5) * 0.04;
+  dir.y += (Math.random() - 0.5) * 0.04;
+  dir.normalize();
+
+  const isMissile = dist < 40_000 && Math.random() < 0.20;
+
+  // ✅ بدل buildBulletMesh / buildMissileMesh
+  let mesh: THREE.Object3D | null = null;
+
+  if (isMissile) {
+    const pooled = this.acquireMissile();
+    if (!pooled) return;  // الـ pool اتملا — skip
+    pooled.group.position.copy(origin);
+    pooled.group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, -1), dir);
+    mesh = pooled.group;
+  } else {
+    const pooled = this.acquireBullet();
+    if (!pooled) return;
+    pooled.group.position.copy(origin);
+    pooled.group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, -1), dir);
+    mesh = pooled.group;
   }
+
+  this.shots.push({
+    mesh,
+    velocity:  dir.clone().multiplyScalar(isMissile ? this.MISSILE_SPEED : this.BULLET_SPEED),
+    life:      isMissile ? this.MISSILE_LIFE : this.BULLET_LIFE,
+    isMissile,
+    owner:     enemy,
+  });
+}
 
   // ── Enemy shot visuals ────────────────────────────────────────
 
-  private buildBulletMesh(dir: THREE.Vector3): THREE.Object3D {
-    const group = new THREE.Group();
-
-    // Core capsule
-    const core = new THREE.Mesh(this.bulletGeo, this.bulletMat);
-    group.add(core);
-
-    // Additive glow sprite so it's visible from far away
-    const glow = new THREE.Sprite(new THREE.SpriteMaterial({
-      color:      0xff7722,
-      transparent: true,
-      opacity:    0.70,
-      blending:   THREE.AdditiveBlending,
-      depthWrite: false,
-    }));
-    glow.scale.set(18, 18, 1);
-    group.add(glow);
-
-    // Tracer tail — thin line behind bullet
-    const tailGeo = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(0, 0, 14),
-      new THREE.Vector3(0, 0, 55),
-    ]);
-    const tail = new THREE.Line(tailGeo, new THREE.LineBasicMaterial({
-      color:      0xff8844,
-      transparent: true,
-      opacity:    0.65,
-      blending:   THREE.AdditiveBlending,
-      depthWrite: false,
-    }));
-    group.add(tail);
-
-    group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, -1), dir);
-    return group;
+  // ✅ بدل buildBulletMesh — بتاخد من الـ pool بدل ما تعمل new
+private acquireBullet(): PooledBullet | null {
+  for (const b of this.bulletPool) {
+    if (!b.inUse) {
+      b.inUse = true;
+      b.group.visible = true;
+      b.glowMat.opacity = 0.70;
+      return b;
+    }
   }
+  return null;  // الـ pool اتملا — مش بنعمل new، بنتجاهل الرصاصة
+}
 
-  private buildMissileMesh(dir: THREE.Vector3): THREE.Object3D {
-    const group = new THREE.Group();
-
-    const body = new THREE.Mesh(this.missileBody, this.missileMat);
-    group.add(body);
-
-    // Larger glow
-    const glow = new THREE.Sprite(new THREE.SpriteMaterial({
-      color:      0xff4400,
-      transparent: true,
-      opacity:    0.55,
-      blending:   THREE.AdditiveBlending,
-      depthWrite: false,
-    }));
-    glow.scale.set(50, 50, 1);
-    group.add(glow);
-
-    // Exhaust flare behind
-    const exhaust = new THREE.Sprite(new THREE.SpriteMaterial({
-      color:      0xffaa00,
-      transparent: true,
-      opacity:    0.40,
-      blending:   THREE.AdditiveBlending,
-      depthWrite: false,
-    }));
-    exhaust.scale.set(22, 80, 1);
-    exhaust.position.set(0, 0, 45);
-    group.add(exhaust);
-
-    group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, -1), dir);
-    return group;
+// ✅ بدل buildMissileMesh
+private acquireMissile(): PooledMissile | null {
+  for (const m of this.missilePool) {
+    if (!m.inUse) {
+      m.inUse = true;
+      m.group.visible = true;
+      m.glowMat.opacity = 0.55;
+      m.exhaustMat.opacity = 0.40;
+      return m;
+    }
   }
+  return null;
+}
+  // private buildBulletMesh(dir: THREE.Vector3): THREE.Object3D {
+  //   const group = new THREE.Group();
+
+  //   // Core capsule
+  //   const core = new THREE.Mesh(this.bulletGeo, this.bulletMat);
+  //   group.add(core);
+
+  //   // Additive glow sprite so it's visible from far away
+  //   const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+  //     color:      0xff7722,
+  //     transparent: true,
+  //     opacity:    0.70,
+  //     blending:   THREE.AdditiveBlending,
+  //     depthWrite: false,
+  //   }));
+  //   glow.scale.set(18, 18, 1);
+  //   group.add(glow);
+
+  //   // Tracer tail — thin line behind bullet
+  //   const tailGeo = new THREE.BufferGeometry().setFromPoints([
+  //     new THREE.Vector3(0, 0, 14),
+  //     new THREE.Vector3(0, 0, 55),
+  //   ]);
+  //   const tail = new THREE.Line(tailGeo, new THREE.LineBasicMaterial({
+  //     color:      0xff8844,
+  //     transparent: true,
+  //     opacity:    0.65,
+  //     blending:   THREE.AdditiveBlending,
+  //     depthWrite: false,
+  //   }));
+  //   group.add(tail);
+
+  //   group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, -1), dir);
+  //   return group;
+  // }
+
+  // private buildMissileMesh(dir: THREE.Vector3): THREE.Object3D {
+  //   const group = new THREE.Group();
+
+  //   const body = new THREE.Mesh(this.missileBody, this.missileMat);
+  //   group.add(body);
+
+  //   // Larger glow
+  //   const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+  //     color:      0xff4400,
+  //     transparent: true,
+  //     opacity:    0.55,
+  //     blending:   THREE.AdditiveBlending,
+  //     depthWrite: false,
+  //   }));
+  //   glow.scale.set(50, 50, 1);
+  //   group.add(glow);
+
+  //   // Exhaust flare behind
+  //   const exhaust = new THREE.Sprite(new THREE.SpriteMaterial({
+  //     color:      0xffaa00,
+  //     transparent: true,
+  //     opacity:    0.40,
+  //     blending:   THREE.AdditiveBlending,
+  //     depthWrite: false,
+  //   }));
+  //   exhaust.scale.set(22, 80, 1);
+  //   exhaust.position.set(0, 0, 45);
+  //   group.add(exhaust);
+
+  //   group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, -1), dir);
+  //   return group;
+  // }
 
   // ── Update flying shots + hit player ─────────────────────────
 
@@ -560,11 +771,73 @@ export class CombatSystem {
       }
     }
 
+    // for (const s of dead) {
+    //   this.scene.remove(s.mesh);
+    //   this.shots = this.shots.filter(x => x !== s);
+    // }
     for (const s of dead) {
-      this.scene.remove(s.mesh);
+      // ✅ رجّع للـ pool بدل ما تشيله من الـ scene
+      s.mesh.visible = false;
+
+      // ارجع للـ pool
+      const bullet = this.bulletPool.find(b => b.group === s.mesh);
+      if (bullet) { bullet.inUse = false; }
+      const missile = this.missilePool.find(m => m.group === s.mesh);
+      if (missile) { missile.inUse = false; }
+
       this.shots = this.shots.filter(x => x !== s);
     }
   }
+
+
+private updateFallingEnemies(delta: number): void {
+  const done: FallingEnemy[] = [];
+
+  for (const f of this.fallingEnemies) {
+    f.elapsed += delta;
+    const t = f.elapsed / f.duration;
+
+    f.obj.position.y -= f.fallSpeed * delta;
+    f.obj.rotation.z += f.spinSpeed * delta;
+    f.obj.rotation.x += f.spinSpeed * 0.5 * delta;
+
+    const scale = Math.max(0, f.obj.scale.x * (1 - 0.3 * delta));
+    f.obj.scale.setScalar(scale);
+
+    if (t >= 1) {
+      this.enemyManager.removeEnemy(f.obj);
+      done.push(f);
+    }
+  }
+
+  for (const f of done) {
+    this.fallingEnemies.splice(this.fallingEnemies.indexOf(f), 1);
+  }
+}
+
+private updateExplosions(delta: number): void {
+  const done: ExplosionParticle[] = [];
+
+  for (const p of this.explosionParticles) {
+    p.elapsed += delta;
+    const t = p.elapsed / p.duration;   // 0 → 1
+
+    if (t >= 1) {
+      this.scene.remove(p.sprite);
+      p.mat.dispose();
+      done.push(p);
+      continue;
+    }
+
+    const eased = 1 - Math.pow(1 - t, 2);
+    p.sprite.scale.setScalar(p.startSize * eased);
+    p.mat.opacity = p.opacity * (1 - t * t);
+  }
+
+  for (const p of done) {
+    this.explosionParticles.splice(this.explosionParticles.indexOf(p), 1);
+  }
+}
 
   // ── Player shots hitting enemies ──────────────────────────────
 
@@ -607,44 +880,74 @@ export class CombatSystem {
   //     }
   //   }
   // }
-  private checkPlayerShotsHitEnemies(): void {
-    const projs = (this.projectileManager as any).projectiles as Array<{
-      kind:  string;
-      mesh:  THREE.Object3D;
-      alive: boolean;
-    }> | undefined;
-    if (!projs) return;
+  // private checkPlayerShotsHitEnemies(): void {
+  //   const projs = (this.projectileManager as any).projectiles;
+  //   if (!projs) return;
 
-    for (const proj of projs) {
-      if (!proj.alive) continue;  // ← اتحرك للـ proj هو الـ outer loop
+  //   for (const proj of projs) {
+  //     if (!proj.alive) continue;
 
-      for (const enemy of this.enemyManager.getEnemies()) {
-        if (enemy.userData.isDead) continue;
+  //     for (const enemy of this.enemyManager.getEnemies()) {
+  //       if (enemy.userData.isDead) continue;
 
-        if (enemy.userData.hp === undefined) {
-          enemy.userData.hp = 1;
-        }
+  //       // 1. تحديث مكان الـ Hitbox ليكون مطابقاً لمكان الطيارة الحالي
+  //       const hitbox = enemy.userData.hitbox as THREE.Box3;
+  //       // hitbox.setFromObject(enemy); 
+  //       hitbox.setFromCenterAndSize(enemy.position, new THREE.Vector3(300, 300, 300));
+        
+  //       // اختياري: توسيع الصندوق حاجة بسيطة جداً لو الطيارة موديلها رفيع
+  //       hitbox.expandByScalar(50); 
 
-        const dist = proj.mesh.position.distanceTo(enemy.position);
-        const hitR = proj.kind === 'missile' ? this.ENEMY_HIT_R_MISSILE : this.ENEMY_HIT_R_BULLET;
+  //       // 2. التشيك: هل موقع الرصاصة الحالي داخل الصندوق؟[cite: 1]
+  //       if (hitbox.containsPoint(proj.mesh.position)) {
+  //         proj.alive = false; 
+  //         enemy.userData.hp = 0; 
+          
+  //         this.flashEnemy(enemy, 0.15); // وميض الإصابة[cite: 1]
+  //         this.explodeAndRemove(enemy); // الانفجار والحذف[cite: 1]
+  //         break; 
+  //       }
+  //     }
+  //   }
+  // }
+  // ✅ الدالة الجديدة كاملة
+private checkPlayerShotsHitEnemies(): void {
+  const projs = (this.projectileManager as any).projectiles as Array<{
+    kind:  string;
+    mesh:  THREE.Object3D;
+    alive: boolean;
+  }> | undefined;
+  if (!projs) return;
 
-        if (dist < hitR) {
-          proj.alive = false; 
-          const dmg = proj.kind === 'missile' ? this.PLAYER_MISSILE_DMG : this.PLAYER_BULLET_DMG;
-          enemy.userData.hp -= dmg;
-          console.log(`💥 HIT! dist=${Math.round(dist)} hitR=${hitR} dmg=${dmg} hp=${enemy.userData.hp}`);
+  const enemies = this.enemyManager.getEnemies();
 
-          this.flashEnemy(enemy, 0.15);
+  for (const proj of projs) {
+    if (!proj.alive) continue;
 
-          if (enemy.userData.hp <= 0) {
-            this.explodeAndRemove(enemy);
-          }
+    const hitRadiusSq = proj.kind === 'missile'
+      ? this.ENEMY_HIT_RADIUS_SQ_MISSILE
+      : this.ENEMY_HIT_RADIUS_SQ_BULLET;
 
-          break; 
-        }
+    for (const enemy of enemies) {
+      if (enemy.userData.isDead) continue;
+
+      // ✅ distanceToSquared بدل distanceTo — بيتجنب sqrt تماماً
+      // ✅ مش بنعمل new Vector3 — بنستخدم _diffVec اللي اتعمل مرة واحدة
+      const distSq = this._diffVec
+        .subVectors(proj.mesh.position, enemy.position)
+        .lengthSq();
+
+      if (distSq < hitRadiusSq) {
+        proj.alive            = false;
+        enemy.userData.isDead = true;
+
+        this.flashEnemy(enemy, 0.15);
+        this.explodeAndRemove(enemy);
+        break;  // الرصاصة ماتت — مفيش داعي نكمل على باقي الأعداء
       }
     }
   }
+}
 
   // ── Enemy death ───────────────────────────────────────────────
 
@@ -692,37 +995,50 @@ export class CombatSystem {
   }
 }
 
+// private startDeathFall(enemy: THREE.Object3D): void {
+//   // امنع EnemyManager من تحريكه
+//   enemy.userData.isDead = true;
+
+//   const FALL_DURATION = 2.0;   // ثواني الوقوع
+//   const FALL_SPEED    = 8_000; // سرعة الهبوط
+//   const SPIN_SPEED    = 2.5;   // سرعة الدوران
+
+//   let elapsed = 0;
+
+//   const tick = (delta: number) => {
+//     elapsed += delta;
+//     const t = elapsed / FALL_DURATION;
+
+//     enemy.position.y    -= FALL_SPEED * delta;
+//     enemy.rotation.z    += SPIN_SPEED * delta;
+//     enemy.rotation.x    += SPIN_SPEED * 0.5 * delta;
+
+//     // يصغر شوية وهو بيوقع
+//     const scale = enemy.scale.x * (1 - 0.3 * delta);
+//     enemy.scale.setScalar(Math.max(scale, 0));
+
+//     if (t >= 1) {
+//       this.enemyManager.removeEnemy(enemy);
+//     } else {
+//       // استدعاء نفسه في الفريم الجاي
+//       requestAnimationFrame(() => tick(1/60));
+//     }
+//   };
+
+//   requestAnimationFrame(() => tick(1/60));
+// }
+
+// ✅ الدالة الجديدة — بدل startDeathFall
 private startDeathFall(enemy: THREE.Object3D): void {
-  // امنع EnemyManager من تحريكه
-  enemy.userData.isDead = true;
+  enemy.userData.isDead = true;   // يوقف EnemyManager من تحريكه
 
-  const FALL_DURATION = 2.0;   // ثواني الوقوع
-  const FALL_SPEED    = 8_000; // سرعة الهبوط
-  const SPIN_SPEED    = 2.5;   // سرعة الدوران
-
-  let elapsed = 0;
-
-  const tick = (delta: number) => {
-    elapsed += delta;
-    const t = elapsed / FALL_DURATION;
-
-    enemy.position.y    -= FALL_SPEED * delta;
-    enemy.rotation.z    += SPIN_SPEED * delta;
-    enemy.rotation.x    += SPIN_SPEED * 0.5 * delta;
-
-    // يصغر شوية وهو بيوقع
-    const scale = enemy.scale.x * (1 - 0.3 * delta);
-    enemy.scale.setScalar(Math.max(scale, 0));
-
-    if (t >= 1) {
-      this.enemyManager.removeEnemy(enemy);
-    } else {
-      // استدعاء نفسه في الفريم الجاي
-      requestAnimationFrame(() => tick(1/60));
-    }
-  };
-
-  requestAnimationFrame(() => tick(1/60));
+  this.fallingEnemies.push({
+    obj:       enemy,
+    elapsed:   0,
+    duration:  2.0,
+    fallSpeed: 8_000,
+    spinSpeed: 2.5,
+  });
 }
 
   // private spawnExplosion(pos: THREE.Vector3): void {
@@ -757,15 +1073,69 @@ private startDeathFall(enemy: THREE.Object3D): void {
   //     }, 16);
   //   }
   // }
-  private spawnExplosion(pos: THREE.Vector3): void {
-  // حلقة واحدة بس — 6 sprites خفيفة
+//   private spawnExplosion(pos: THREE.Vector3): void {
+//   // حلقة واحدة بس — 6 sprites خفيفة
+//   const layers = [
+//     { color: 0xffffff, size: 400,  opacity: 1.0, speed: 0.5  }, // لمعة بيضاء لحظية
+//     { color: 0xffdd00, size: 700,  opacity: 0.9, speed: 0.7  }, // كرة صفراء
+//     { color: 0xff6600, size: 900,  opacity: 0.8, speed: 0.9  }, // برتقالي
+//     { color: 0xff2200, size: 600,  opacity: 0.7, speed: 1.1  }, // أحمر
+//     { color: 0x331100, size: 1100, opacity: 0.5, speed: 0.6  }, // دخان داكن
+//     { color: 0x888888, size: 800,  opacity: 0.3, speed: 0.4  }, // دخان رمادي
+//   ];
+
+//   for (const layer of layers) {
+//     const mat = new THREE.SpriteMaterial({
+//       color:       layer.color,
+//       transparent: true,
+//       opacity:     layer.opacity,
+//       blending:    layer.color === 0x331100 || layer.color === 0x888888
+//                      ? THREE.NormalBlending
+//                      : THREE.AdditiveBlending,
+//       depthWrite:  false,
+//     });
+
+//     const sprite = new THREE.Sprite(mat);
+//     sprite.position.copy(pos);
+//     sprite.scale.setScalar(layer.size * 0.3); // يبدأ صغير
+//     this.scene.add(sprite);
+
+//     const targetSize = layer.size;
+//     const duration   = 0.55 + layer.speed * 0.2;
+//     let   elapsed    = 0;
+
+//     const tick = () => {
+//       elapsed += 0.016;
+//       const t = elapsed / duration; // 0 → 1
+
+//       if (t >= 1) {
+//         this.scene.remove(sprite);
+//         mat.dispose();
+//         return;
+//       }
+
+//       // يكبر بسرعة في الأول ثم يبطأ
+//       const eased = 1 - Math.pow(1 - t, 2);
+//       sprite.scale.setScalar(targetSize * eased);
+
+//       // يعتم بالتدريج
+//       mat.opacity = layer.opacity * (1 - t * t);
+
+//       requestAnimationFrame(tick);
+//     };
+
+//     requestAnimationFrame(tick);
+//   }
+// }
+// ✅ الدالة الجديدة — بدل spawnExplosion
+private spawnExplosion(pos: THREE.Vector3): void {
   const layers = [
-    { color: 0xffffff, size: 400,  opacity: 1.0, speed: 0.5  }, // لمعة بيضاء لحظية
-    { color: 0xffdd00, size: 700,  opacity: 0.9, speed: 0.7  }, // كرة صفراء
-    { color: 0xff6600, size: 900,  opacity: 0.8, speed: 0.9  }, // برتقالي
-    { color: 0xff2200, size: 600,  opacity: 0.7, speed: 1.1  }, // أحمر
-    { color: 0x331100, size: 1100, opacity: 0.5, speed: 0.6  }, // دخان داكن
-    { color: 0x888888, size: 800,  opacity: 0.3, speed: 0.4  }, // دخان رمادي
+    { color: 0xffffff, size: 400,  opacity: 1.0, duration: 0.25 },
+    { color: 0xffdd00, size: 700,  opacity: 0.9, duration: 0.45 },
+    { color: 0xff6600, size: 900,  opacity: 0.8, duration: 0.55 },
+    { color: 0xff2200, size: 600,  opacity: 0.7, duration: 0.50 },
+    { color: 0x331100, size: 1100, opacity: 0.5, duration: 0.65 },
+    { color: 0x888888, size: 800,  opacity: 0.3, duration: 0.60 },
   ];
 
   for (const layer of layers) {
@@ -773,7 +1143,7 @@ private startDeathFall(enemy: THREE.Object3D): void {
       color:       layer.color,
       transparent: true,
       opacity:     layer.opacity,
-      blending:    layer.color === 0x331100 || layer.color === 0x888888
+      blending:    (layer.color === 0x331100 || layer.color === 0x888888)
                      ? THREE.NormalBlending
                      : THREE.AdditiveBlending,
       depthWrite:  false,
@@ -781,34 +1151,17 @@ private startDeathFall(enemy: THREE.Object3D): void {
 
     const sprite = new THREE.Sprite(mat);
     sprite.position.copy(pos);
-    sprite.scale.setScalar(layer.size * 0.3); // يبدأ صغير
+    sprite.scale.setScalar(layer.size * 0.3);
     this.scene.add(sprite);
 
-    const targetSize = layer.size;
-    const duration   = 0.55 + layer.speed * 0.2;
-    let   elapsed    = 0;
-
-    const tick = () => {
-      elapsed += 0.016;
-      const t = elapsed / duration; // 0 → 1
-
-      if (t >= 1) {
-        this.scene.remove(sprite);
-        mat.dispose();
-        return;
-      }
-
-      // يكبر بسرعة في الأول ثم يبطأ
-      const eased = 1 - Math.pow(1 - t, 2);
-      sprite.scale.setScalar(targetSize * eased);
-
-      // يعتم بالتدريج
-      mat.opacity = layer.opacity * (1 - t * t);
-
-      requestAnimationFrame(tick);
-    };
-
-    requestAnimationFrame(tick);
+    this.explosionParticles.push({
+      sprite,
+      mat,
+      elapsed:   0,
+      duration:  layer.duration,
+      startSize: layer.size,
+      opacity:   layer.opacity,
+    });
   }
 }
 

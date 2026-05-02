@@ -119,6 +119,8 @@ export class EnemyManager {
         enemy.userData.offsetX = offsetX;
         // Record spawn time so tracking is delayed by LAG_DURATION seconds
         enemy.userData.spawnTime = this.elapsedTime;
+
+        // enemy.userData.hitbox = new THREE.Box3();
         
         // Initial look at cockpit
         enemy.lookAt(this._cockpitPos);
@@ -187,11 +189,27 @@ export class EnemyManager {
                 // Smoothly follow the target position
                 // enemy.position.lerp(this._targetPos, delta * 1.2); 
                 
-                const trackingSpeed = THREE.MathUtils.clamp((age - LAG_DURATION) * 0.08, 0.02, 0.15);
-                enemy.position.lerp(this._targetPos, delta * trackingSpeed * 60);
+                // const trackingSpeed = THREE.MathUtils.clamp((age - LAG_DURATION) * 0.08, 0.02, 0.15);
+                // enemy.position.lerp(this._targetPos, delta * trackingSpeed * 60);
+                const trackingSpeed = THREE.MathUtils.clamp((age - LAG_DURATION) * 0.04, 0.01, 0.05);
+                enemy.position.lerp(this._targetPos, delta * trackingSpeed * 40);
 
-                // Face the cockpit directly
+                // const targetQuaternion = new THREE.Quaternion();
+                // const dummy = new THREE.Object3D();
+                // dummy.position.copy(enemy.position);
+                // dummy.lookAt(this._cockpitPos);
+                // targetQuaternion.copy(dummy.quaternion);
+
+                // // الدوران بنسبة 5% فقط في الفريم الواحد يجعله يراوغ ببطء "منطقي"
+                // enemy.quaternion.slerp(targetQuaternion, delta * 2.0); 
+                // enemy.rotateY(Math.PI / 2); // الحفاظ على اتجاه الموديل الأصلي[cite: 2]
+
+                const targetQuaternion = enemy.quaternion.clone();
                 enemy.lookAt(this._cockpitPos);
+                targetQuaternion.copy(enemy.quaternion);
+                enemy.quaternion.slerp(targetQuaternion, delta * 2.0);
+                // Face the cockpit directly
+                // enemy.lookAt(this._cockpitPos);
                 enemy.rotateY(Math.PI / 2);
 
                 // Stable scaling based on combat distance ratio
