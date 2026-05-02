@@ -8,11 +8,13 @@ import { ProjectileManager } from './ProjectileManager';
 export class Cockpit {
     public model: THREE.Group | null = null;
     public weaponSystem: WeaponSystem | null = null;
-
     public currentSpeed = 255;
 
     private rotationSpeed = { pitch: 0, roll: 0 };
-    
+
+    // ✅ نخزن الزوايا الفعلية ونعمل clamp عليها
+    private angles = { pitch: 0, yaw: 0, roll: 0 };
+
     private readonly isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
 
     private config = {
@@ -21,7 +23,9 @@ export class Cockpit {
         maxRotationSpeed: 0.04,
         minSpeed:         255,
         maxSpeed:         400,
-        acceleration:     0.03
+        acceleration:     0.03,
+        maxPitch:         Math.PI * 0.4,   // ✅ حد أقصى للـ pitch (~72 درجة)
+        maxRoll:          Math.PI * 0.35,  // ✅ حد أقصى للـ roll (~63 درجة)
     };
 
     constructor(
@@ -138,24 +142,24 @@ export class Cockpit {
     // }
 
     public update(delta: number): void {
-    // public update() {
         if (!this.model) return;
 
         const keys = this.controls.keys;
 
+        // Speed
         if (keys['ShiftLeft'] || keys['ShiftRight']) {
             this.currentSpeed = THREE.MathUtils.lerp(this.currentSpeed, this.config.maxSpeed, this.config.acceleration);
         } else {
             this.currentSpeed = THREE.MathUtils.lerp(this.currentSpeed, this.config.minSpeed, this.config.acceleration * 0.5);
         }
 
+        // Rotation speed accumulation
         if (keys['ArrowUp']) {
             this.rotationSpeed.pitch = Math.max(this.rotationSpeed.pitch - this.config.sensitivity, -this.config.maxRotationSpeed);
         }
         if (keys['ArrowDown']) {
             this.rotationSpeed.pitch = Math.min(this.rotationSpeed.pitch + this.config.sensitivity, this.config.maxRotationSpeed);
         }
-
         if (keys['ArrowLeft']) {
             this.rotationSpeed.roll = Math.max(this.rotationSpeed.roll - this.config.sensitivity, -this.config.maxRotationSpeed);
         }
@@ -163,21 +167,41 @@ export class Cockpit {
             this.rotationSpeed.roll = Math.min(this.rotationSpeed.roll + this.config.sensitivity, this.config.maxRotationSpeed);
         }
 
+        // Damping
         this.rotationSpeed.pitch *= this.config.damping;
         this.rotationSpeed.roll  *= this.config.damping;
 
+        // ✅ تحديث الزوايا المخزنة مع clamp — هنا بيمنع التقلب
+        this.angles.pitch = THREE.MathUtils.clamp(
+            this.angles.pitch + this.rotationSpeed.pitch,
+            -this.config.maxPitch,
+            this.config.maxPitch
+        );
+        this.angles.roll = THREE.MathUtils.clamp(
+            this.angles.roll + this.rotationSpeed.roll,
+            -this.config.maxRoll,
+            this.config.maxRoll
+        );
+
+        // ✅ الـ yaw مربوط بالـ roll (طبيعي للطيران)
+        this.angles.yaw += -this.rotationSpeed.roll * 0.7;
+
+        // ✅ لما مفيش ضغط على يمين/شمال، الـ roll يرجع للصفر تدريجياً
         if (!keys['ArrowLeft'] && !keys['ArrowRight']) {
-            this.model.rotation.z = THREE.MathUtils.lerp(this.model.rotation.z, 0, 0.05);
+            this.angles.roll = THREE.MathUtils.lerp(this.angles.roll, 0, 0.05);
         }
 
-        // 5. Transform
-        this.model.rotateX(this.rotationSpeed.pitch);
-        this.model.rotateZ(this.rotationSpeed.roll);
-        this.model.rotateY(-this.rotationSpeed.roll * 0.7);
-        // this.model.translateZ(this.currentSpeed);
+        // ✅ نطبق الـ rotation من الـ angles المخزنة بـ order ثابت (YXZ)
+        // YXZ = yaw أول → pitch → roll: أنسب order للطيران ويمنع Gimbal Lock
+        this.model.rotation.order = 'YXZ';
+        this.model.rotation.y = this.angles.yaw;
+        this.model.rotation.x = this.angles.pitch;
+        this.model.rotation.z = this.angles.roll;
+
+        // Movement
         this.model.translateZ(this.currentSpeed * delta);
 
-        // 6. Weapons
+        // Weapons
         if (this.weaponSystem) {
             this.weaponSystem.setCockpitSpeed(this.currentSpeed);
             this.weaponSystem.update(delta);
