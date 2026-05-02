@@ -225,7 +225,7 @@ export class WeaponSystem {
     this.cockpitModel.localToWorld(origin);
 
     // const forward = new THREE.Vector3(0, 6000, 100000);
-    const forward = new THREE.Vector3(0, 0.6, 1);
+    const forward = new THREE.Vector3(0, 0.06, 1);
     forward.applyQuaternion(this.cockpitModel.quaternion).normalize();
 
     // const aimPoint = new THREE.Vector3(0, 6000, 100000);
