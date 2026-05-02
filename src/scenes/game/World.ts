@@ -40,7 +40,7 @@ export class World {
     this.renderer      = renderer ?? null;
 
     this.build();
-    this.loadSkyEXR();
+    // this.loadSkyEXR();
 
     const mapUrl = this.options.mapImageUrl || '/images/egypt-map.png';
 
@@ -54,29 +54,29 @@ export class World {
     (window as any).gameWorld = this;
   }
 
-  private loadSkyEXR(): void {
-    const url = this.options.skyExrUrl;
-    if (!url || !this.renderer) return;
+  // private loadSkyEXR(): void {
+  //   const url = this.options.skyExrUrl;
+  //   if (!url || !this.renderer) return;
 
-    const loader = new EXRLoader(this.loadingManager);
-    loader.setDataType(THREE.FloatType);
+  //   const loader = new EXRLoader(this.loadingManager);
+  //   loader.setDataType(THREE.FloatType);
 
-    loader.load(url, (texture) => {
-      try {
-        texture.mapping = THREE.EquirectangularReflectionMapping;
-        const pmrem = new THREE.PMREMGenerator(this.renderer!);
-        pmrem.compileEquirectangularShader();
-        const envMap = pmrem.fromEquirectangular(texture).texture;
-        this.scene.environment = envMap;
-        this.scene.background  = envMap;
-        texture.dispose();
-        pmrem.dispose();
-      } catch (e) {
-        console.warn('[World] Failed to apply EXR:', e);
-        this.scene.background = new THREE.Color(0x8ec5f7);
-      }
-    });
-  }
+  //   loader.load(url, (texture) => {
+  //     try {
+  //       texture.mapping = THREE.EquirectangularReflectionMapping;
+  //       const pmrem = new THREE.PMREMGenerator(this.renderer!);
+  //       pmrem.compileEquirectangularShader();
+  //       const envMap = pmrem.fromEquirectangular(texture).texture;
+  //       this.scene.environment = envMap;
+  //       this.scene.background  = envMap;
+  //       texture.dispose();
+  //       pmrem.dispose();
+  //     } catch (e) {
+  //       console.warn('[World] Failed to apply EXR:', e);
+  //       this.scene.background = new THREE.Color(0x8ec5f7);
+  //     }
+  //   });
+  // }
 
   private build(): void {
     this.scene.add(this.root);
@@ -127,24 +127,38 @@ export class World {
   //     console.warn('[World] cockpitObject is missing from world.update() call!');
   //   }
   // }
-  public update(deltaTime: number, playerPosition?: THREE.Vector3, cockpitObject?: THREE.Object3D): void {
+  // public update(deltaTime: number, playerPosition?: THREE.Vector3, cockpitObject?: THREE.Object3D): void {
+  //   this.time += deltaTime;
+  //   if (!this.miniMap) return;
+
+  //   if (playerPosition) {
+  //     this.miniMap.updatePlayerPosition(playerPosition.x, playerPosition.z);
+  //   }
+
+  //   if (cockpitObject) {
+  //     // cockpitObject.updateMatrixWorld(true);
+  //     cockpitObject.getWorldQuaternion(this._quat);
+  //     this._euler.setFromQuaternion(this._quat, 'YXZ');
+  //     this.miniMap.updateHeading(this._euler.y);
+  //   } else if (!this.headingWarnShown) {
+  //     console.warn('[World] cockpitObject is missing!');
+  //     this.headingWarnShown = true; // ← مرة واحدة بس
+  //   }
+  // }
+  // تعديل توقيع الدالة لتستقبل الـ yaw مباشرة
+public update(deltaTime: number, playerPosition?: THREE.Vector3, playerYaw?: number): void {
     this.time += deltaTime;
     if (!this.miniMap) return;
 
     if (playerPosition) {
-      this.miniMap.updatePlayerPosition(playerPosition.x, playerPosition.z);
+        this.miniMap.updatePlayerPosition(playerPosition.x, playerPosition.z);
     }
 
-    if (cockpitObject) {
-      // cockpitObject.updateMatrixWorld(true);
-      cockpitObject.getWorldQuaternion(this._quat);
-      this._euler.setFromQuaternion(this._quat, 'YXZ');
-      this.miniMap.updateHeading(this._euler.y);
-    } else if (!this.headingWarnShown) {
-      console.warn('[World] cockpitObject is missing!');
-      this.headingWarnShown = true; // ← مرة واحدة بس
+    // بدل الحسابات المعقدة، بنستخدم القيمة الجاهزة
+    if (playerYaw !== undefined) {
+        this.miniMap.updateHeading(playerYaw);
     }
-  }
+}
 
   public resetHeadingReference(): void {
     this.headingReferenceSet = false;

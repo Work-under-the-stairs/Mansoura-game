@@ -62,41 +62,55 @@ export class Cockpit {
             this.camera.lookAt(0, 0.34, 0.2);
             // this.camera.rotation.y = Math.PI;
 
-            // Interior lighting
-            const dashLight = new THREE.SpotLight(0xffffff, 0);
-            dashLight.position.set(0, 0.5, -0.5);
-            dashLight.angle    = Math.PI / 3;
+            // // Interior lighting
+            // const dashLight = new THREE.SpotLight(0xffffff, 0);
+            // dashLight.position.set(0, 0.5, -0.5);
+            // dashLight.angle    = Math.PI / 3;
 
-            dashLight.penumbra = 0.3;
-            dashLight.decay    = 1.5;
-            dashLight.distance = 5;
+            // dashLight.penumbra = 0.3;
+            // dashLight.decay    = 1.5;
+            // dashLight.distance = 5;
 
-            const lightTarget = new THREE.Object3D();
-            lightTarget.position.set(0, 0, 0.5);
-            this.model.add(dashLight);
-            this.model.add(lightTarget);
-            dashLight.target = lightTarget;
+            // const lightTarget = new THREE.Object3D();
+            // lightTarget.position.set(0, 0, 0.5);
+            // this.model.add(dashLight);
+            // this.model.add(lightTarget);
+            // dashLight.target = lightTarget;
 
-            const ambientCabinLight = new THREE.PointLight(0x88ccff, 0.2, 0.5);
-            ambientCabinLight.position.set(0, 0.2, 0);
-            this.model.add(ambientCabinLight);
+            // const ambientCabinLight = new THREE.PointLight(0x88ccff, 0.2, 0.5);
+            // ambientCabinLight.position.set(0, 0.2, 0);
+            // this.model.add(ambientCabinLight);
 
-            this.model.traverse((child) => {
-                if ((child as THREE.Mesh).isMesh) {
-                    const mesh = child as THREE.Mesh;
+            // this.model.traverse((child) => {
+            //     if ((child as THREE.Mesh).isMesh) {
+            //         const mesh = child as THREE.Mesh;
 
-                    if (!this.isMobile) {
-                        mesh.castShadow = true;
-                        mesh.receiveShadow = true;
-                    }
+            //         if (!this.isMobile) {
+            //             mesh.castShadow = true;
+            //             mesh.receiveShadow = true;
+            //         }
 
-                    // mesh.castShadow    = true;
-                    // mesh.receiveShadow = true;
-                    if (mesh.material instanceof THREE.MeshStandardMaterial) {
-                        mesh.material.roughness = 0.6;
-                    }
-                }
-            });
+            //         // mesh.castShadow    = true;
+            //         // mesh.receiveShadow = true;
+            //         if (mesh.material instanceof THREE.MeshStandardMaterial) {
+            //             mesh.material.roughness = 0.6;
+            //         }
+            //     }
+            // });
+            // this.model.traverse((child) => {
+            //     if ((child as THREE.Mesh).isMesh) {
+            //         const mesh = child as THREE.Mesh;
+                    
+            //         if (mesh.material instanceof THREE.MeshStandardMaterial) {
+            //             // لو الموديل فيه أجزاء المفروض تنور (شاشات/زراير)
+            //             if (mesh.name.includes('screen') || mesh.name.includes('button')) {
+            //                 mesh.material.emissive = new THREE.Color(0x00ffff); // لون النور
+            //                 mesh.material.emissiveIntensity = 1.5;
+            //             }
+            //             mesh.material.roughness = 0.6;
+            //         }
+            //     }
+            // });
 
             // ✅ Model is guaranteed loaded here — safe to create WeaponSystem
             this.weaponSystem = new WeaponSystem(
@@ -140,6 +154,8 @@ export class Cockpit {
     //     }
     //     return pos;
     // }
+
+    private readonly _worldPos = new THREE.Vector3();
 
     public update(delta: number): void {
         if (!this.model) return;
@@ -193,18 +209,40 @@ export class Cockpit {
 
         // ✅ نطبق الـ rotation من الـ angles المخزنة بـ order ثابت (YXZ)
         // YXZ = yaw أول → pitch → roll: أنسب order للطيران ويمنع Gimbal Lock
+        // this.model.rotation.order = 'YXZ';
+        // this.model.rotation.y = this.angles.yaw;
+        // this.model.rotation.x = this.angles.pitch;
+        // this.model.rotation.z = this.angles.roll;
+
+        // // Movement
+        // this.model.translateZ(this.currentSpeed * delta);
+
+        // // Weapons
+        // if (this.weaponSystem) {
+        //     this.weaponSystem.setCockpitSpeed(this.currentSpeed);
+        //     this.weaponSystem.update(delta);
+        // }
+
         this.model.rotation.order = 'YXZ';
         this.model.rotation.y = this.angles.yaw;
         this.model.rotation.x = this.angles.pitch;
         this.model.rotation.z = this.angles.roll;
 
-        // Movement
+        // 3. الحركة: translateZ سريعة جداً و Optimized في Three.js
         this.model.translateZ(this.currentSpeed * delta);
 
-        // Weapons
         if (this.weaponSystem) {
             this.weaponSystem.setCockpitSpeed(this.currentSpeed);
             this.weaponSystem.update(delta);
+        }
+        
+        // 4. تحديث الـ World بمكان الكوكبيت والـ Yaw
+        // هاتي الـ worldPosition بدون إنشاء object جديد
+        this.model.getWorldPosition(this._worldPos);
+
+        // نبعت البيانات للـ world (تأكدي إن الـ world متاح عندك في الكلاس)
+        if (this.world) {
+            this.world.update(delta, this._worldPos, this.angles.yaw);
         }
     }
 }
