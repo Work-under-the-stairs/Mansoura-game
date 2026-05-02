@@ -40,7 +40,7 @@ export class World {
     this.renderer      = renderer ?? null;
 
     this.build();
-    // this.loadSkyEXR();
+    this.loadSkyEXR();
 
     const mapUrl = this.options.mapImageUrl || '/images/egypt-map.png';
 
@@ -54,29 +54,29 @@ export class World {
     (window as any).gameWorld = this;
   }
 
-  // private loadSkyEXR(): void {
-  //   const url = this.options.skyExrUrl;
-  //   if (!url || !this.renderer) return;
+  private loadSkyEXR(): void {
+    const url = this.options.skyExrUrl;
+    if (!url || !this.renderer) return;
 
-  //   const loader = new EXRLoader(this.loadingManager);
-  //   loader.setDataType(THREE.FloatType);
+    const loader = new EXRLoader(this.loadingManager);
+    loader.setDataType(THREE.FloatType);
 
-  //   loader.load(url, (texture) => {
-  //     try {
-  //       texture.mapping = THREE.EquirectangularReflectionMapping;
-  //       const pmrem = new THREE.PMREMGenerator(this.renderer!);
-  //       pmrem.compileEquirectangularShader();
-  //       const envMap = pmrem.fromEquirectangular(texture).texture;
-  //       this.scene.environment = envMap;
-  //       this.scene.background  = envMap;
-  //       texture.dispose();
-  //       pmrem.dispose();
-  //     } catch (e) {
-  //       console.warn('[World] Failed to apply EXR:', e);
-  //       this.scene.background = new THREE.Color(0x8ec5f7);
-  //     }
-  //   });
-  // }
+    loader.load(url, (texture) => {
+      try {
+        texture.mapping = THREE.EquirectangularReflectionMapping;
+        const pmrem = new THREE.PMREMGenerator(this.renderer!);
+        pmrem.compileEquirectangularShader();
+        const envMap = pmrem.fromEquirectangular(texture).texture;
+        this.scene.environment = envMap;
+        this.scene.background  = envMap;
+        texture.dispose();
+        pmrem.dispose();
+      } catch (e) {
+        console.warn('[World] Failed to apply EXR:', e);
+        this.scene.background = new THREE.Color(0x8ec5f7);
+      }
+    });
+  }
 
   private build(): void {
     this.scene.add(this.root);
