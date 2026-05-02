@@ -1023,9 +1023,9 @@ private startDeathFall(enemy: THREE.Object3D): void {
   });
 }
 
-    const FALL_DURATION = 2.0;
-    const FALL_SPEED    = 8_000;
-    const SPIN_SPEED    = 2.5;
+    // const FALL_DURATION = 2.0;
+    // const FALL_SPEED    = 8_000;
+    // const SPIN_SPEED    = 2.5;
 
   //     let life = 0;
   //     const id = setInterval(() => {
@@ -1132,6 +1132,7 @@ private spawnExplosion(pos: THREE.Vector3): void {
       opacity:   layer.opacity,
     });
   }
+}
 
   // ── Helpers ───────────────────────────────────────────────────
 
