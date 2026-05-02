@@ -103,7 +103,7 @@ export class Engine {
       this.scene,
       this.loadingManager,
       {
-        skyExrUrl:       this.isMobile ? '/images/qwantani_afternoon_1k.exr' : '/images/qwantani_afternoon_2k.exr',
+        skyExrUrl:       this.isMobile ? '' : '/images/qwantani_afternoon_2k.exr',
         terrainSize:     42000,
         terrainSegments: this.isMobile ? 100 : 420,
         riverWidth:      420,
