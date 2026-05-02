@@ -8,79 +8,55 @@ interface NotifOptions {
   sound?: boolean;
 }
 
-/* 🎨 SVG Icons instead of emojis */
-const ICONS: Record<NotifType, string> = {
-  kill: `
-    <svg viewBox="0 0 24 24" fill="none">
-      <path d="M12 2L3 7v6c0 5 3.8 9.7 9 11 5.2-1.3 9-6 9-11V7l-9-5z" fill="currentColor"/>
-    </svg>
-  `,
-  warn: `
-    <svg viewBox="0 0 24 24" fill="none">
-      <path d="M12 3L2 20h20L12 3z" fill="currentColor"/>
-      <rect x="11" y="9" width="2" height="5" fill="#000"/>
-      <rect x="11" y="16" width="2" height="2" fill="#000"/>
-    </svg>
-  `,
-  info: `
-    <svg viewBox="0 0 24 24" fill="none">
-      <circle cx="12" cy="12" r="10" fill="currentColor"/>
-      <rect x="11" y="10" width="2" height="6" fill="#000"/>
-      <rect x="11" y="6" width="2" height="2" fill="#000"/>
-    </svg>
-  `,
-  success: `
-    <svg viewBox="0 0 24 24" fill="none">
-      <circle cx="12" cy="12" r="10" fill="currentColor"/>
-      <path d="M7 12l3 3 7-7" stroke="#000" stroke-width="2" fill="none"/>
-    </svg>
-  `,
-};
-
 const COLORS: Record<NotifType, string> = {
-  kill:    '#E24B4A',
-  warn:    '#EF9F27',
-  info:    '#378ADD',
-  success: '#1D9E75',
+  kill: '#901414',
+  warn: '#C9A84C',
+  info: '#556B2F',
+  success: '#7C9A42',
 };
 
-const TITLE_COLORS: Record<NotifType, string> = {
-  kill:    '#F09595',
-  warn:    '#FAC775',
-  info:    '#85B7EB',
-  success: '#5DCAA5',
+/* SVG Icons */
+const ICONS: Record<NotifType, string> = {
+  kill: '✦',
+  warn: '⚠',
+  info: '✈',
+  success: '✔',
 };
 
-/* 🎵 ONE shared sound */
 const SOUND = '/sounds/universfield-new-notification-040-493469.mp3';
 
 export class NotificationSystem {
   private root: HTMLDivElement;
   private counter = 0;
   private readonly MAX = 5;
+  private audio = new Audio(SOUND);
 
   constructor() {
     this.root = document.createElement('div');
 
     Object.assign(this.root.style, {
       position: 'fixed',
-      top: '12px',
-      right: '12px',
+      top: '18px',
+      right: '18px',
       display: 'flex',
       flexDirection: 'column',
-      gap: '6px',
-      pointerEvents: 'none',
+      gap: '10px',
       zIndex: '99999',
+      pointerEvents: 'none',
     });
 
-    this.root.className = 'gn-root';
     document.body.appendChild(this.root);
-
     this.injectStyles();
   }
 
   public show(opts: NotifOptions): void {
-    const { type, title, msg = '', duration = 4000, sound = true } = opts;
+    const {
+      type,
+      title,
+      msg = '',
+      duration = 4500,
+      sound = true
+    } = opts;
 
     if (sound) this.playSound();
 
@@ -88,27 +64,34 @@ export class NotificationSystem {
       this.root.removeChild(this.root.firstChild!);
     }
 
-    const id  = `notif-${this.counter++}`;
-    const col = COLORS[type];
+    const id = `notif-${this.counter++}`;
+    const color = COLORS[type];
 
     const el = document.createElement('div');
-    el.className = `gn-notif`;
+    el.className = 'mf-notif';
     el.id = id;
 
     el.innerHTML = `
-      <div class="gn-icon" style="color:${col}">
-        ${ICONS[type]}
+      <div class="mf-icon">${ICONS[type]}</div>
+
+      <div class="mf-body">
+        <div class="mf-title">${title}</div>
+        ${msg ? `<div class="mf-msg">${msg}</div>` : ''}
       </div>
-      <div class="gn-body">
-        <p class="gn-title" style="color:${TITLE_COLORS[type]}">${title}</p>
-        ${msg ? `<p class="gn-msg">${msg}</p>` : ''}
-      </div>
-      <div class="gn-bar" id="bar-${id}" style="background:${col};width:100%"></div>
+
+      <button class="mf-close">✕</button>
+
+      <div class="mf-bar" id="bar-${id}" style="background:${color}"></div>
     `;
 
-    el.style.borderLeft = `3px solid ${col}`;
     this.root.appendChild(el);
 
+    /* close button */
+    el.querySelector('.mf-close')?.addEventListener('click', () => {
+      this.closeNotif(el);
+    });
+
+    /* timer bar */
     const bar = document.getElementById(`bar-${id}`)!;
     bar.style.transition = `width ${duration}ms linear`;
 
@@ -117,108 +100,133 @@ export class NotificationSystem {
     });
 
     setTimeout(() => {
-      el.classList.add('gn-dying');
-      setTimeout(() => el.remove(), 300);
+      this.closeNotif(el);
     }, duration);
   }
 
-  /* 🔊 single sound */
-  // private playSound(): void {
-  //   try {
-  //     const audio = new Audio(SOUND);
-  //     audio.volume = 0.6;
-  //     audio.play().catch(() => {});
-  //   } catch {}
-  // }
-  private audio = new Audio(SOUND); // ← مرة واحدة بس
+  private closeNotif(el: HTMLElement): void {
+    if (el.classList.contains('mf-hide')) return;
+
+    el.classList.add('mf-hide');
+    setTimeout(() => el.remove(), 280);
+  }
 
   private playSound(): void {
     this.audio.currentTime = 0;
-    this.audio.volume = 0.6;
+    this.audio.volume = 0.55;
     this.audio.play().catch(() => {});
   }
 
-  public destroy(): void {
-    this.root.remove();
-    document.getElementById('gn-styles')?.remove();
-  }
-
   private injectStyles(): void {
-    if (document.getElementById('gn-styles')) return;
-
     const style = document.createElement('style');
-    style.id = 'gn-styles';
 
     style.textContent = `
-      .gn-root {
-        width: min(92vw, 280px);
+      .mf-notif{
+        width:360px;
+        position:relative;
+        overflow:hidden;
+
+        display:flex;
+        align-items:flex-start;
+        gap:12px;
+
+        padding:12px 14px 14px;
+
+        border-radius:10px;
+
+        background:
+          linear-gradient(180deg,#ece1c9,#d8c39b);
+
+        border:2px solid #8a6a34;
+
+        box-shadow:
+          0 6px 18px rgba(0,0,0,.28),
+          inset 0 1px 0 rgba(255,255,255,.7);
+
+        animation:mf-in .25s ease;
+        pointer-events:auto;
       }
 
-      .gn-notif {
-        display: flex;
-        align-items: flex-start;
-        gap: 10px;
-        padding: 10px 12px;
-        border-radius: 12px;
-        font-family: system-ui, sans-serif;
-        font-size: 12px;
-        background: rgba(15,15,25,0.8);
-        backdrop-filter: blur(8px);
-        position: relative;
-        overflow: hidden;
-        animation: gn-in 0.2s ease;
-        box-shadow: 0 6px 18px rgba(0,0,0,0.25);
-        pointer-events: auto;
+      .mf-hide{
+        opacity:0;
+        transform:translateX(24px);
+        transition:.28s ease;
       }
 
-      .gn-notif.gn-dying {
-        opacity: 0;
-        transform: translateX(20px);
-        transition: 0.25s ease;
+      .mf-icon{
+        width:38px;
+        height:38px;
+        border-radius:50%;
+        flex-shrink:0;
+
+        display:flex;
+        align-items:center;
+        justify-content:center;
+
+        font-size:18px;
+        font-weight:bold;
+
+        color:#8a6a34;
+        background:radial-gradient(circle,#f5ead0,#d8b66a);
+        border:1px solid #8a6a34;
       }
 
-      .gn-icon {
-        width: 18px;
-        height: 18px;
-        flex-shrink: 0;
+      .mf-body{
+        flex:1;
+        padding-right:4px;
       }
 
-      .gn-icon svg {
-        width: 100%;
-        height: 100%;
-        display: block;
+      .mf-title{
+        font-family:Georgia,serif;
+        font-size:15px;
+        font-weight:700;
+        color:#2f2415;
+        line-height:1.2;
       }
 
-      .gn-body {
-        flex: 1;
+      .mf-msg{
+        margin-top:4px;
+        font-size:12px;
+        line-height:1.35;
+        color:#514633;
       }
 
-      .gn-title {
-        font-weight: 600;
-        margin: 0;
+      .mf-close{
+        width:26px;
+        height:26px;
+        border:none;
+        border-radius:6px;
+        cursor:pointer;
+        flex-shrink:0;
+
+        background:rgb(144, 20, 20);
+        color:#fff;
+        font-size:14px;
+        font-weight:bold;
+
+        box-shadow:0 2px 5px rgba(0,0,0,.2);
       }
 
-      .gn-msg {
-        margin: 2px 0 0;
-        color: #aab2c5;
-        font-size: 11px;
+      .mf-close:hover{
+        filter:brightness(1.08);
       }
 
-      .gn-bar {
-        position: absolute;
-        bottom: 0;
-        left: 0;
-        height: 2px;
+      .mf-bar{
+        position:absolute;
+        left:0;
+        bottom:0;
+        width:100%;
+        height:4px;
       }
 
-      @keyframes gn-in {
-        from {
-          opacity: 0;
-          transform: translateX(20px);
+      @keyframes mf-in{
+        from{
+          opacity:0;
+          transform:translateX(20px);
         }
-        to {
-          opacity: 1;
-          transform: translateX(0);
+        to{
+          opacity:1;
+          transform:translateX(0);
         }
       }
     `;
