@@ -4,28 +4,14 @@ import { Cockpit } from './Cockpit';
 
 // ─── Tuning constants ────────────────────────────────────────────────────────
 
-/** How far ahead of the cockpit (in world units) each enemy spawns. */
 const SPAWN_DISTANCE = 40_000;
-
-/** The specific distance enemies try to maintain from the cockpit. */
 const COMBAT_DISTANCE = 15_000;
-
-/** 
- * Spread for spawning. 
- * Only horizontal spread — enemies match cockpit height exactly.
- */
 const SPAWN_SPREAD_X = 10_000;
 
-/** Visual scale constants */
 const BASE_SCALE       = 160;
 const MIN_SCALE_FACTOR = 0.5;
 const MAX_SCALE_FACTOR = 2.5;
 
-/**
- * How many seconds after spawning before an enemy starts tracking the cockpit.
- * During this window the enemy holds its spawn position.
- */
-// const LAG_DURATION = 9;
 const LAG_DURATION = 3;
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -38,15 +24,19 @@ export class EnemyManager {
     private model:      THREE.Object3D | null = null;
     private modelReady  = false;
 
-    private readonly TOTAL_ENEMIES  = 3; 
-    private readonly SPAWN_INTERVAL = 2; 
+    private readonly TOTAL_ENEMIES  = 3;
+    private readonly SPAWN_INTERVAL = 2;
 
     private spawnQueue:       number[] = [];
     private elapsedTime       = 0;
     private positionCaptured  = false;
     private spawnIndex        = 0;
 
-    // Reusable vectors
+    // ✅ Store the first-ever spawn origin so replay reuses exact same position
+    private firstSpawnCockpitPos: THREE.Vector3 | null = null;
+    private firstSpawnForward:    THREE.Vector3 | null = null;
+    private firstSpawnRight:      THREE.Vector3 | null = null;
+
     private readonly _cockpitPos  = new THREE.Vector3();
     private readonly _forward     = new THREE.Vector3();
     private readonly _right       = new THREE.Vector3();
@@ -81,24 +71,36 @@ export class EnemyManager {
         if (this._cockpitPos.z === 0) return false;
 
         this.positionCaptured = true;
-        // for (let i = 0; i < this.TOTAL_ENEMIES; i++) {
-        //     this.spawnQueue.push(this.elapsedTime + i * this.SPAWN_INTERVAL);
-        // }
         return true;
     }
 
-    private spawnEnemy(): void {
+    public spawnEnemy(): void {
         if (!this.model || !this.cockpit.model) return;
 
-        this.cockpit.model.getWorldPosition(this._cockpitPos);
-        this.cockpit.model.updateWorldMatrix(true, false);
-        
-        this._forward.setFromMatrixColumn(this.cockpit.model.matrixWorld, 2).normalize();
-        this._right.setFromMatrixColumn(this.cockpit.model.matrixWorld, 0).normalize();
-        this._up.setFromMatrixColumn(this.cockpit.model.matrixWorld, 1).normalize();
+        // ✅ On first-ever spawn, capture & store cockpit state
+        // On replay, reuse the stored state so positions are identical
+        if (!this.firstSpawnCockpitPos) {
+            // First run — capture live cockpit state and save it
+            this.cockpit.model.getWorldPosition(this._cockpitPos);
+            this.cockpit.model.updateWorldMatrix(true, false);
 
-        // Divide the spread into equal slots and pick the one for this enemy index,
-        // then add a small random jitter (±20 % of slot width) so they don't look robotic.
+            this._forward.setFromMatrixColumn(this.cockpit.model.matrixWorld, 2).normalize();
+            this._right.setFromMatrixColumn(this.cockpit.model.matrixWorld, 0).normalize();
+            this._up.setFromMatrixColumn(this.cockpit.model.matrixWorld, 1).normalize();
+
+            // Save for all future replays
+            this.firstSpawnCockpitPos = this._cockpitPos.clone();
+            this.firstSpawnForward    = this._forward.clone();
+            this.firstSpawnRight      = this._right.clone();
+        } else {
+            // Replay — use the saved first-run values exactly
+            this._cockpitPos.copy(this.firstSpawnCockpitPos);
+            this._forward.copy(this.firstSpawnForward!);
+            this._right.copy(this.firstSpawnRight!);
+        }
+
+        // Same slot logic as before — but spawnIndex is now reset on replay
+        // so slot 0 and slot 1 are always the same two positions
         const slotWidth = (SPAWN_SPREAD_X * 2) / this.TOTAL_ENEMIES;
         const slotStart = -SPAWN_SPREAD_X + this.spawnIndex * slotWidth;
         const jitter    = (Math.random() * 2 - 1) * slotWidth * 0.2;
@@ -109,21 +111,17 @@ export class EnemyManager {
             .addScaledVector(this._forward, SPAWN_DISTANCE)
             .addScaledVector(this._right, offsetX);
 
-        // Lock world-Y to cockpit so enemies are at the same height
         this._spawnOrigin.y = this._cockpitPos.y;
 
         const enemy = this.model.clone(true);
         enemy.position.copy(this._spawnOrigin);
 
-        // Save only the horizontal offset — vertical is always derived from cockpit live
-        enemy.userData.offsetX = offsetX;
-        // Record spawn time so tracking is delayed by LAG_DURATION seconds
+        enemy.userData.offsetX   = offsetX;
         enemy.userData.spawnTime = this.elapsedTime;
-        
-        // Initial look at cockpit
+
         enemy.lookAt(this._cockpitPos);
-        enemy.rotateY(Math.PI / 2); 
-        
+        enemy.rotateY(Math.PI / 2);
+
         this.scene.add(enemy);
         this.enemies.push(enemy);
         this.spawnIndex++;
@@ -139,6 +137,25 @@ export class EnemyManager {
             this.scene.remove(enemy);
             this.enemies.splice(idx, 1);
         }
+    }
+
+    // ✅ Full reset — called by Engine.resetForReplay()
+    public clearAll(): void {
+        // Remove every enemy mesh from the scene
+        for (const e of this.enemies) {
+            this.scene.remove(e);
+        }
+        this.enemies = [];
+
+        // Reset spawn index so first two enemies land in slot 0 and slot 1 again
+        this.spawnIndex = 0;
+
+        // Reset time and queue
+        this.elapsedTime      = 0;
+        this.spawnQueue       = [];
+
+        // Keep positionCaptured = true (cockpit is still loaded)
+        // Keep firstSpawnCockpitPos — we WANT to reuse the original spawn origin
     }
 
     public update(delta: number): void {
@@ -158,8 +175,7 @@ export class EnemyManager {
         if (this.cockpit.model) {
             this.cockpit.model.getWorldPosition(this._cockpitPos);
             this.cockpit.model.updateWorldMatrix(true, false);
-            
-            // Re-calculate world vectors for the cockpit
+
             this._forward.setFromMatrixColumn(this.cockpit.model.matrixWorld, 2).normalize();
             this._right.setFromMatrixColumn(this.cockpit.model.matrixWorld, 0).normalize();
             this._up.setFromMatrixColumn(this.cockpit.model.matrixWorld, 1).normalize();
@@ -169,33 +185,23 @@ export class EnemyManager {
 
                 if (enemy.userData.isDead) continue;
 
-                // Skip tracking until the lag window has passed
                 const age = this.elapsedTime - (enemy.userData.spawnTime as number ?? 0);
                 if (age < LAG_DURATION) continue;
-                
-                // Target position = Cockpit + Forward Distance + Lateral Offset
-                // World Y is taken directly from cockpit so height always matches
+
                 this._targetPos
                     .copy(this._cockpitPos)
                     .addScaledVector(this._forward, COMBAT_DISTANCE)
                     .addScaledVector(this._right, enemy.userData.offsetX);
 
-                // Override Y so enemies track cockpit height in world space,
-                // regardless of pitch / roll of the cockpit's local up axis
                 this._targetPos.y = this._cockpitPos.y;
 
-                // Smoothly follow the target position
-                // enemy.position.lerp(this._targetPos, delta * 1.2); 
-                
                 const trackingSpeed = THREE.MathUtils.clamp((age - LAG_DURATION) * 0.08, 0.02, 0.15);
                 enemy.position.lerp(this._targetPos, delta * trackingSpeed * 60);
 
-                // Face the cockpit directly
                 enemy.lookAt(this._cockpitPos);
                 enemy.rotateY(Math.PI / 2);
 
-                // Stable scaling based on combat distance ratio
-                const distRatio = THREE.MathUtils.clamp(COMBAT_DISTANCE / SPAWN_DISTANCE, 0, 1);
+                const distRatio   = THREE.MathUtils.clamp(COMBAT_DISTANCE / SPAWN_DISTANCE, 0, 1);
                 const scaleFactor = THREE.MathUtils.lerp(MAX_SCALE_FACTOR, MIN_SCALE_FACTOR, distRatio);
                 enemy.scale.setScalar(BASE_SCALE * scaleFactor);
             }

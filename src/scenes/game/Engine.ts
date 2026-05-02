@@ -31,25 +31,22 @@ export class Engine {
   private projectileManager: ProjectileManager;
   private readonly isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
 
-
   private onRestartCallback: (() => void) | null = null;
   private onExitCallback: (() => void) | null = null;
   private readyCallback: (() => void) | null = null;
   private animationStarted = false;
   private levelStarted = false;
 
+  // ✅ Keep a reference so we can reset it on replay
+  private missionController: MissionController | null = null;
+
   constructor(loadingScene: LoadingScene) {
     this.loadingScene   = loadingScene;
     this.loadingManager = new THREE.LoadingManager();
 
-    // 1. Attach the manager first
     this.loadingScene.attachToLoadingManager(this.loadingManager);
-
-    // 2. Force small UI update to prevent 0% freeze
     this.loadingScene.updateProgress(1);
 
-    // 3. When loading finishes + overlay fades, ONLY fire readyCallback.
-    //    show() and init() are called by main.ts — not here.
     this.loadingScene.onComplete(() => {
       console.log('[Engine] Assets ready — firing readyCallback');
       if (this.readyCallback) {
@@ -134,18 +131,14 @@ export class Engine {
       this.enemies,
       this.projectileManager,
       this.notifications,
-      () => { 
+      () => {
         console.log("Engine: Restart triggered");
-        // هنا ممكن تنادي على ميثود الريستارت اللي في main.ts لو محتاج
-        // أو لو الـ Engine عنده ميثود ريستارت خاصة بيه
-      }, 
-      () => { 
+      },
+      () => {
         console.log("Engine: Exit triggered");
-        this.destroy(); // بيمسح السين الحالية
-        // ويرجع للمنيو (ده بيعتمد على الـ flow في main.ts عندك)
+        this.destroy();
       }
     );
-
 
     this.setupLights();
     this.createEnvironment();
@@ -154,7 +147,9 @@ export class Engine {
 
     this.hide();
 
-    (window as any).missionController = new MissionController(this);
+    // ✅ Store reference on the instance, not just window
+    this.missionController = new MissionController(this);
+    (window as any).missionController = this.missionController;
   }
 
   // =====================
@@ -201,6 +196,64 @@ export class Engine {
   }
 
   // =====================
+  //  Full game reset (Replay without destroying Engine)
+  // =====================
+
+  /**
+   * ✅ Resets ALL game state back to the very beginning:
+   *    - Health → 100%
+   *    - Mission state → START
+   *    - All enemies cleared
+   *    - All projectiles cleared
+   *    - Cockpit position/rotation → initial
+   *    - HUD refreshed
+   *
+   * Call this instead of destroy() + new Engine() when the player clicks Replay.
+   */
+  public resetForReplay(): void {
+    console.log('[Engine] Resetting for replay...');
+
+    // 1. Cancel pending mission timers, clear decision cards, reset state machine
+    if (this.missionController) {
+      this.missionController.reset();
+    }
+
+    // 2. Clear all active enemies and reset spawn index
+    if (this.enemies) {
+      this.enemies.clearAll();
+    }
+
+    // 3. Clear all in-flight projectiles
+    if (this.projectileManager) {
+      (this.projectileManager as any).clearAll?.();
+      // Brute-force clear projectile meshes from scene
+      const projs = (this.projectileManager as any).projectiles as Array<{mesh: any, alive: boolean}> | undefined;
+      if (projs) {
+        for (const p of projs) { this.scene.remove(p.mesh); p.alive = false; }
+        (this.projectileManager as any).projectiles = [];
+      }
+    }
+
+    // 4. Reset health + combat system (hides death screen, resets HP bar to 100)
+    if (this.combatSystem) {
+      this.combatSystem.reset();
+    }
+
+    // 5. Reset cockpit position and rotation to the starting point
+    if (this.cockpit?.model) {
+      this.cockpit.model.position.set(450, 1450, 6200);
+      this.cockpit.model.rotation.set(0, 0, 0);
+      (this.cockpit as any).angles = { pitch: 0, yaw: 0, roll: 0 };
+      (this.cockpit as any).rotationSpeed = { pitch: 0, roll: 0 };
+      (this.cockpit as any).currentSpeed = (this.cockpit as any).config.minSpeed;
+    }
+
+    // 6. Restart mission — levelStarted=false lets animate() call start() next frame
+    this.levelStarted = false;
+    console.log('[Engine] Reset complete — mission restarting.');
+  }
+
+  // =====================
   //  Lights & environment
   // =====================
 
@@ -240,19 +293,15 @@ export class Engine {
   //  Lifecycle
   // =====================
 
-  // public init(): void {
-  //   this.animate();
-  // }
-
   public init(options?: { onRestart?: () => void; onExit?: () => void }): void {
-    // ربط أحداث الأزرار بالـ Logic اللي جاي من main.ts
     if (this.combatSystem && options) {
-      // الوصول للـ health system وتحديث الـ callbacks
       const hs = (this.combatSystem as any).health;
-      
+
+      // ✅ On Replay: reset in-place ONLY — never call options.onRestart because
+      //    that creates a new Engine in main.ts which crashes (loadingScene is gone)
       hs.onRestartCallback = () => {
-        this.destroy(); // تنظيف المحرك الحالي تماماً
-        options.onRestart?.(); 
+        this.resetForReplay();
+        // Do NOT call options.onRestart?.() here — it would rebuild the Engine
       };
 
       hs.onExitCallback = () => {
@@ -260,7 +309,6 @@ export class Engine {
         options.onExit?.();
       };
 
-    /** Start the render loop. Guarded — safe to call only once. */
       if (this.animationStarted) {
         console.warn('[Engine] init() called more than once — ignoring');
         return;
@@ -297,9 +345,10 @@ export class Engine {
       this.mobileOptimized = true;
     }
 
+    // ✅ levelStarted is reset by resetForReplay(), so mission auto-restarts
     if (!this.levelStarted && this.cockpit.model) {
-      if ((window as any).missionController) {
-        (window as any).missionController.start();
+      if (this.missionController) {
+        this.missionController.start();
         this.levelStarted = true;
       }
     }
@@ -308,6 +357,12 @@ export class Engine {
   public destroy(): void {
     window.cancelAnimationFrame(this.animationFrameId);
     window.removeEventListener('resize', this.onWindowResize);
+
+    // Clean up mission timers
+    if (this.missionController) {
+      this.missionController.reset();
+      this.missionController = null;
+    }
 
     if (this.world)                this.world.dispose();
     if (this.mobileControls)       this.mobileControls.destroy();
@@ -322,10 +377,6 @@ export class Engine {
     console.log('Engine destroyed safely.');
   }
 
-  /**
-   * Register a callback fired once loading is done and the overlay has faded.
-   * main.ts uses this to: show menu → narrative → then call show() + init().
-   */
   public onReady(callback: () => void): void {
     this.readyCallback = callback;
   }

@@ -4,30 +4,6 @@ import { EnemyManager } from './EnemyManager';
 import { ProjectileManager } from './ProjectileManager';
 import { NotificationSystem } from './NotificationSystem';
 
-// ═══════════════════════════════════════════════════════════════
-//  HOW TO USE — add these three lines to Engine.ts:
-//
-//  1. Import:
-//     import { CombatSystem } from './CombatSystem';
-//
-//  2. Declare property:
-//     private combatSystem: CombatSystem;
-//
-//  3. After enemies is created in constructor:
-//     this.combatSystem = new CombatSystem(
-//       this.scene, this.camera, this.cockpit,
-//       this.enemies, this.projectileManager,
-//       this.notifications,
-//     );
-//
-//  4. In animate():
-//     this.combatSystem.update(delta);
-//
-//  5. In destroy():
-//     this.combatSystem.dispose();
-// ═══════════════════════════════════════════════════════════════
-
-
 // ───────────────────────────────────────────────────────────────
 //  HealthSystem  (self-contained — owns HUD DOM)
 // ───────────────────────────────────────────────────────────────
@@ -36,12 +12,10 @@ class HealthSystem {
   public maxHp   = 100;
   public isDead  = false;
 
-  // Shake state — applied to cockpit model, NOT camera
   public  shakeTimer      = 0;
   public  shakeIntensity  = 0;
-  private readonly SHAKE_DURATION = 0.40; // s
+  private readonly SHAKE_DURATION = 0.40;
 
-  // Camera base offset — restored after every shake frame
   private cameraBasePos = new THREE.Vector3();
   private cameraBasePosSet = false;
 
@@ -50,12 +24,18 @@ class HealthSystem {
   private hitOverlay: HTMLElement;
   private deathEl:    HTMLElement;
 
+  // ✅ Store callbacks as public properties so Engine can reassign them
+  public onRestartCallback?: () => void;
+  public onExitCallback?:    () => void;
+
   constructor(
     private cockpit: Cockpit,
     private onDeathCallback?: () => void,
-    private onRestartCallback?: () => void,
-    private onExitCallback?: () => void,
+    onRestartCallback?: () => void,
+    onExitCallback?: () => void,
   ) {
+    this.onRestartCallback = onRestartCallback;
+    this.onExitCallback    = onExitCallback;
     this.buildHUD();
     this.hudFill    = document.getElementById('cs-hp-fill')!;
     this.hudLabel   = document.getElementById('cs-hp-label')!;
@@ -70,24 +50,17 @@ class HealthSystem {
     this.hp = Math.max(0, this.hp - amount);
     this.refreshBar();
     this.flashScreen();
-    // Shake driven by cockpit model roll/pitch offset
     this.shakeTimer     = this.SHAKE_DURATION;
-    this.shakeIntensity = amount * 0.00008; // tuned for cockpit scale
+    this.shakeIntensity = amount * 0.00008;
     if (this.hp <= 0) this.onDeath();
   }
 
-  /**
-   * Call every frame. Applies a small random rotation offset to the
-   * cockpit MODEL (not camera) then snaps it back — gives a "jolt"
-   * feel without permanently displacing the camera.
-   */
   public update(delta: number): void {
     if (this.shakeTimer <= 0) return;
 
     const model = this.cockpit.model;
     if (!model) return;
 
-    // Capture camera local rest position once
     const cam = model.children.find(c => c instanceof THREE.PerspectiveCamera) as THREE.PerspectiveCamera | undefined;
     if (cam && !this.cameraBasePosSet) {
       this.cameraBasePos.copy(cam.position);
@@ -95,11 +68,9 @@ class HealthSystem {
     }
 
     this.shakeTimer -= delta;
-    const t   = Math.max(0, this.shakeTimer / this.SHAKE_DURATION); // 1 → 0
-    const mag = this.shakeIntensity * t * t; // eases out
+    const t   = Math.max(0, this.shakeTimer / this.SHAKE_DURATION);
+    const mag = this.shakeIntensity * t * t;
 
-    // Jolt the camera LOCAL position inside the cockpit group
-    // — it snaps back to base every frame so position never drifts
     if (cam) {
       cam.position.set(
         this.cameraBasePos.x + (Math.random() - 0.5) * mag * 0.8,
@@ -108,14 +79,37 @@ class HealthSystem {
       );
     }
 
-    // Also add a tiny rotation wobble to the cockpit itself
     model.rotation.x += (Math.random() - 0.5) * mag * 0.18;
     model.rotation.z += (Math.random() - 0.5) * mag * 0.18;
 
-    // When shake ends, restore camera to exact base position
     if (this.shakeTimer <= 0 && cam && this.cameraBasePosSet) {
       cam.position.copy(this.cameraBasePos);
     }
+  }
+
+  // ✅ Full health reset — call this on replay
+  public reset(): void {
+    // Restore HP
+    this.hp    = this.maxHp;
+    this.isDead = false;
+
+    // Stop any lingering shake
+    this.shakeTimer     = 0;
+    this.shakeIntensity = 0;
+    this.cameraBasePosSet = false;
+
+    // Restore camera position inside cockpit to base
+    const model = this.cockpit.model;
+    if (model && this.cameraBasePosSet) {
+      const cam = model.children.find(c => c instanceof THREE.PerspectiveCamera) as THREE.PerspectiveCamera | undefined;
+      if (cam) cam.position.copy(this.cameraBasePos);
+    }
+
+    // Refresh HP bar to 100%
+    this.refreshBar();
+
+    // Hide the death screen
+    this.deathEl.classList.remove('cs-visible');
   }
 
   public dispose(): void {
@@ -145,8 +139,6 @@ class HealthSystem {
     setTimeout(() => { this.hitOverlay.style.opacity = '0'; }, 100);
   }
 
-
-
   private onDeath(): void {
     this.isDead = true;
     this.deathEl.classList.add('cs-visible');
@@ -156,87 +148,89 @@ class HealthSystem {
   }
 
   private buildHUD(): void {
-  document.getElementById('cs-hud-root')?.remove();
-  const root = document.createElement('div');
-  root.id = 'cs-hud-root';
-  root.innerHTML = `
-    <style>
-      /* شريط الحياة بيفضل فوق في النص */
-      #cs-hud-root {
-        position: fixed; top: 18px; left: 50%;
-        transform: translateX(-50%);
-        z-index: 999; pointer-events: none;
-        display: flex; flex-direction: column;
-        align-items: center; gap: 5px;
-        visibility: hidden;
-      }
-      #cs-hp-label {
-        font-family: 'Courier New', monospace; font-size: 11px; 
-        letter-spacing: 3px; color: #00ffcc; text-shadow: 0 0 8px #00ffcc88;
-      }
-      #cs-hp-bar { width: 240px; height: 9px; background: rgba(0,0,0,0.5); border: 1px solid rgba(0,255,180,0.3); border-radius: 2px; overflow: hidden; }
-      #cs-hp-fill { height: 100%; width: 100%; background: linear-gradient(90deg,#00c97a,#00ffcc); transition: width 0.12s ease; }
+    document.getElementById('cs-hud-root')?.remove();
+    const root = document.createElement('div');
+    root.id = 'cs-hud-root';
+    root.innerHTML = `
+      <style>
+        #cs-hud-root {
+          position: fixed; top: 18px; left: 50%;
+          transform: translateX(-50%);
+          z-index: 999; pointer-events: none;
+          display: flex; flex-direction: column;
+          align-items: center; gap: 5px;
+          visibility: hidden;
+        }
+        #cs-hp-label {
+          font-family: 'Courier New', monospace; font-size: 11px;
+          letter-spacing: 3px; color: #00ffcc; text-shadow: 0 0 8px #00ffcc88;
+        }
+        #cs-hp-bar { width: 240px; height: 9px; background: rgba(0,0,0,0.5); border: 1px solid rgba(0,255,180,0.3); border-radius: 2px; overflow: hidden; }
+        #cs-hp-fill { height: 100%; width: 100%; background: linear-gradient(90deg,#00c97a,#00ffcc); transition: width 0.12s ease; }
 
-      /* شاشة الموت - منفصلة تماما عشان تمسك الشاشة كلها */
-      #cs-death {
-        position: fixed; inset: 0; z-index: 10001; /* أعلى من أي حاجة */
-        display: none; /* مخفية في البداية */
-        align-items: center; justify-content: center;
-        background: rgba(0, 0, 0, 0.75); /* تظليل اللعبة وراها */
-        backdrop-filter: blur(4px); /* اختيار اختياري لزيادة التظليل */
-        pointer-events: all; 
-        opacity: 0; transition: opacity 0.8s ease;
-      }
-      #cs-death.cs-visible { display: flex; opacity: 1; }
+        #cs-hit-overlay {
+          position: fixed; inset: 0; z-index: 9999;
+          background: radial-gradient(ellipse at center, transparent 40%, rgba(255,0,0,0.35) 100%);
+          pointer-events: none; opacity: 0; transition: opacity 0.15s ease;
+        }
 
-      #cs-death-modal {
-        display: flex; flex-direction: column; align-items: center; gap: 24px;
-        padding: 48px 64px; background: rgba(8, 10, 18, 0.95);
-        border: 1px solid rgba(255, 34, 34, 0.4); border-radius: 4px;
-        box-shadow: 0 0 60px rgba(255,0,0,0.2);
-      }
-      #cs-death-title { font-family: 'Courier New', monospace; font-size: 42px; color: #ff2222; letter-spacing: 10px; margin:0; }
-      
-      .cs-btn {
-        font-family: 'Courier New', monospace; padding: 12px 36px;
-        background: transparent; border: 1px solid; border-radius: 2px;
-        cursor: pointer; width: 220px; letter-spacing: 2px; transition: all 0.2s;
-      }
-      #cs-btn-retry { color: #00ffcc; border-color: rgba(0,255,180,0.5); }
-      #cs-btn-retry:hover { background: rgba(0,255,180,0.15); box-shadow: 0 0 15px rgba(0,255,180,0.3); }
-      #cs-btn-exit { color: #aaa; border-color: #444; }
-      #cs-btn-exit:hover { background: rgba(255,255,255,0.1); color: #fff; }
-    </style>
+        #cs-death {
+          position: fixed; inset: 0; z-index: 10001;
+          display: none;
+          align-items: center; justify-content: center;
+          background: rgba(0, 0, 0, 0.75);
+          backdrop-filter: blur(4px);
+          pointer-events: all;
+          opacity: 0; transition: opacity 0.8s ease;
+        }
+        #cs-death.cs-visible { display: flex; opacity: 1; }
 
-    <div id="cs-hp-label">HULL 100%</div>
-    <div id="cs-hp-bar"><div id="cs-hp-fill"></div></div>
-    <div id="cs-hit-overlay"></div>
-    
-    <div id="cs-death">
-      <div id="cs-death-modal">
-        <div id="cs-death-title">DESTROYED</div>
-        <div id="cs-death-sub" style="color:rgba(255,255,255,0.4); font-size:12px; letter-spacing:3px;">MISSION FAILED</div>
-        <div id="cs-btn-row" style="display:flex; flex-direction:column; gap:12px;">
-          <button class="cs-btn" id="cs-btn-retry">↺ RETRY MISSION</button>
-          <button class="cs-btn" id="cs-btn-exit">⎋ EXIT TO MENU</button>
+        #cs-death-modal {
+          display: flex; flex-direction: column; align-items: center; gap: 24px;
+          padding: 48px 64px; background: rgba(8, 10, 18, 0.95);
+          border: 1px solid rgba(255, 34, 34, 0.4); border-radius: 4px;
+          box-shadow: 0 0 60px rgba(255,0,0,0.2);
+        }
+        #cs-death-title { font-family: 'Courier New', monospace; font-size: 42px; color: #ff2222; letter-spacing: 10px; margin:0; }
+
+        .cs-btn {
+          font-family: 'Courier New', monospace; padding: 12px 36px;
+          background: transparent; border: 1px solid; border-radius: 2px;
+          cursor: pointer; width: 220px; letter-spacing: 2px; transition: all 0.2s;
+        }
+        #cs-btn-retry { color: #00ffcc; border-color: rgba(0,255,180,0.5); }
+        #cs-btn-retry:hover { background: rgba(0,255,180,0.15); box-shadow: 0 0 15px rgba(0,255,180,0.3); }
+        #cs-btn-exit { color: #aaa; border-color: #444; }
+        #cs-btn-exit:hover { background: rgba(255,255,255,0.1); color: #fff; }
+      </style>
+
+      <div id="cs-hp-label">HULL 100%</div>
+      <div id="cs-hp-bar"><div id="cs-hp-fill"></div></div>
+      <div id="cs-hit-overlay"></div>
+
+      <div id="cs-death">
+        <div id="cs-death-modal">
+          <div id="cs-death-title">DESTROYED</div>
+          <div id="cs-death-sub" style="color:rgba(255,255,255,0.4); font-size:12px; letter-spacing:3px;">MISSION FAILED</div>
+          <div id="cs-btn-row" style="display:flex; flex-direction:column; gap:12px;">
+            <button class="cs-btn" id="cs-btn-retry">↺ RETRY MISSION</button>
+            <button class="cs-btn" id="cs-btn-exit">⎋ EXIT TO MENU</button>
+          </div>
         </div>
       </div>
-    </div>
-  `;
-  document.body.appendChild(root);
+    `;
+    document.body.appendChild(root);
 
-  // ربط الزراير بالـ Callbacks
-  document.getElementById('cs-btn-retry')?.addEventListener('click', () => {
-    console.log("Restarting...");
-    this.onRestartCallback?.();
-  });
-  document.getElementById('cs-btn-exit')?.addEventListener('click', () => {
-    console.log("Exiting...");
-    this.onExitCallback?.();
-  });
-}
-
-
+    // ✅ Buttons always read the latest callback from the instance property
+    document.getElementById('cs-btn-retry')?.addEventListener('click', () => {
+      console.log('Restarting...');
+      this.onRestartCallback?.();
+    });
+    document.getElementById('cs-btn-exit')?.addEventListener('click', () => {
+      console.log('Exiting...');
+      this.onExitCallback?.();
+    });
+  }
 }
 
 
@@ -248,53 +242,43 @@ interface EnemyShot {
   velocity:  THREE.Vector3;
   life:      number;
   isMissile: boolean;
-  /** the enemy that fired it — used to skip self-hit */
   owner:     THREE.Object3D;
 }
 
 
 // ───────────────────────────────────────────────────────────────
-//  CombatSystem  — the one file your teammate doesn't need to touch
+//  CombatSystem
 // ───────────────────────────────────────────────────────────────
 export class CombatSystem {
 
   public readonly health: HealthSystem;
 
-  // ── Enemy shooting config ─────────────────────────────────────
-  private readonly ENGAGE_DIST      = 120_000;
-  private readonly BULLET_SPEED     = 12_000;
-  private readonly MISSILE_SPEED    =  5_000;
-  private readonly BULLET_LIFE      = 10.0;
-  private readonly MISSILE_LIFE     = 12.0;
-  // private readonly BULLET_DAMAGE    = 6;
-  // private readonly MISSILE_DAMAGE   = 22;
-  private readonly BULLET_DAMAGE    = 3;
-  private readonly MISSILE_DAMAGE   = 10;
-  private readonly HIT_R_BULLET     = 500;
-  private readonly HIT_R_MISSILE    = 500;
-  private readonly SHOOT_INTERVAL_MIN = 2.0;  // s
+  private readonly ENGAGE_DIST        = 120_000;
+  private readonly BULLET_SPEED       = 12_000;
+  private readonly MISSILE_SPEED      =  5_000;
+  private readonly BULLET_LIFE        = 10.0;
+  private readonly MISSILE_LIFE       = 12.0;
+  private readonly BULLET_DAMAGE      = 3;
+  private readonly MISSILE_DAMAGE     = 10;
+  private readonly HIT_R_BULLET       = 500;
+  private readonly HIT_R_MISSILE      = 500;
+  private readonly SHOOT_INTERVAL_MIN = 2.0;
   private readonly SHOOT_INTERVAL_MAX = 5.0;
 
-  // ── Player hit config ─────────────────────────────────────────
   private readonly PLAYER_BULLET_DMG   = 12;
   private readonly PLAYER_MISSILE_DMG  = 40;
-  // private readonly ENEMY_HIT_R_BULLET  = 200;
-  // private readonly ENEMY_HIT_R_MISSILE = 550;
   private readonly ENEMY_HIT_R_BULLET  = 3000;
   private readonly ENEMY_HIT_R_MISSILE = 3000;
 
-  // ── Shared geometry / material for enemy projectiles ──────────
   private readonly bulletGeo:   THREE.CylinderGeometry;
   private readonly bulletMat:   THREE.MeshBasicMaterial;
   private readonly missileBody: THREE.CylinderGeometry;
   private readonly missileMat:  THREE.MeshBasicMaterial;
   private readonly missileGlow: THREE.SpriteMaterial;
 
-  // Runtime state
-  private shots:        EnemyShot[]  = [];
-  /** Per-enemy shoot cooldown — keyed by object uuid */
-  private cooldowns     = new Map<string, number>();
-  private shootIntervals= new Map<string, number>();
+  private shots:         EnemyShot[] = [];
+  private cooldowns      = new Map<string, number>();
+  private shootIntervals = new Map<string, number>();
 
   constructor(
     private scene:             THREE.Scene,
@@ -303,27 +287,27 @@ export class CombatSystem {
     private enemyManager:      EnemyManager,
     private projectileManager: ProjectileManager,
     private notifications:     NotificationSystem,
-    private onRestartCallback?: () => void,   // ← جديد
-    private onExitCallback?:    () => void,   // ← جديد
+    private onRestartCallback?: () => void,
+    private onExitCallback?:    () => void,
   ) {
-    this.health = new HealthSystem(cockpit, () => {
-      this.notifications.show({
-        type:     'warn',
-        title:    'SHIP DESTROYED',
-        msg:      'Hull integrity lost — mission failed',
-        duration: 8000,
-      });
-    },
-    onRestartCallback,   // ← جديد
-    onExitCallback,      // ← جديد
-  );
+    this.health = new HealthSystem(
+      cockpit,
+      () => {
+        this.notifications.show({
+          type:     'warn',
+          title:    'SHIP DESTROYED',
+          msg:      'Hull integrity lost — mission failed',
+          duration: 8000,
+        });
+      },
+      onRestartCallback,
+      onExitCallback,
+    );
 
-    // Enemy bullet: glowing orange capsule
-    this.bulletGeo = new THREE.CylinderGeometry(2.5, 2.5, 28, 6);
+    this.bulletGeo  = new THREE.CylinderGeometry(2.5, 2.5, 28, 6);
     this.bulletGeo.rotateX(Math.PI / 2);
-    this.bulletMat = new THREE.MeshBasicMaterial({ color: 0xff5500 });
+    this.bulletMat  = new THREE.MeshBasicMaterial({ color: 0xff5500 });
 
-    // Enemy missile: larger red cylinder + glow sprite
     this.missileBody = new THREE.CylinderGeometry(5, 5, 70, 8);
     this.missileBody.rotateX(Math.PI / 2);
     this.missileMat  = new THREE.MeshBasicMaterial({ color: 0xff2200 });
@@ -336,7 +320,8 @@ export class CombatSystem {
     });
   }
 
-  // ── Public update — call from Engine.animate() ────────────────
+  // ── Public API ────────────────────────────────────────────────
+
   public showHUD(): void {
     const root = document.getElementById('cs-hud-root');
     if (root) root.style.visibility = 'visible';
@@ -345,6 +330,25 @@ export class CombatSystem {
   public hideHUD(): void {
     const root = document.getElementById('cs-hud-root');
     if (root) root.style.visibility = 'hidden';
+  }
+
+  // ✅ Full combat reset — called by Engine.resetForReplay()
+  public reset(): void {
+    // 1. Remove all in-flight enemy shots from the scene
+    for (const s of this.shots) {
+      this.scene.remove(s.mesh);
+    }
+    this.shots = [];
+
+    // 2. Clear all per-enemy shoot timers so enemies don't immediately volley
+    this.cooldowns.clear();
+    this.shootIntervals.clear();
+
+    // 3. Reset player health to 100 and hide the death screen
+    this.health.reset();
+
+    // 4. Make sure HUD is visible and fresh
+    this.showHUD();
   }
 
   public update(delta: number): void {
@@ -377,7 +381,6 @@ export class CombatSystem {
       const dist = enemy.position.distanceTo(cockpitPos);
       if (dist > this.ENGAGE_DIST) continue;
 
-      // Initialise per-enemy cooldown on first sight
       if (!this.cooldowns.has(enemy.uuid)) {
         const interval = this.randomInterval();
         this.cooldowns.set(enemy.uuid, interval * Math.random());
@@ -397,24 +400,20 @@ export class CombatSystem {
   }
 
   private fireEnemyShot(
-    enemy:      THREE.Object3D,
-    targetPos:  THREE.Vector3,
-    dist:       number,
+    enemy:     THREE.Object3D,
+    targetPos: THREE.Vector3,
+    dist:      number,
   ): void {
     const origin = enemy.position.clone();
 
-    // Predictive lead: where will the player be when bullet arrives?
-    const travelTime = dist / this.BULLET_SPEED;
-    const playerFwd  = this.cockpit.model
+    const travelTime    = dist / this.BULLET_SPEED;
+    const playerFwd     = this.cockpit.model
       ? new THREE.Vector3(0, 0, -1).applyQuaternion(this.cockpit.model.quaternion)
       : new THREE.Vector3();
-    const speed      = this.cockpit.currentSpeed ?? 255;
-    // const aimPos     = targetPos.clone().addScaledVector(playerFwd, speed * travelTime * 0.55);
-    // const playerVelocity = this.cockpit.getVelocityVector(); // متجه حقيقي (x, y, z)
+    const speed         = this.cockpit.currentSpeed ?? 255;
     const playerVelocity = playerFwd.multiplyScalar(speed);
-    const aimPos = targetPos.clone().addScaledVector(playerVelocity, travelTime);
+    const aimPos        = targetPos.clone().addScaledVector(playerVelocity, travelTime);
 
-    // عشان متخليش العدو "أسطوري" وميغلطش أبدًا، ضيف شوية عشوائية بعد الحساب الصح
     const errorMargin = 0.02;
     aimPos.x += (Math.random() - 0.5) * dist * errorMargin;
 
@@ -426,7 +425,6 @@ export class CombatSystem {
 
     const isMissile = dist < 40_000 && Math.random() < 0.20;
 
-    // Build visible mesh
     const mesh = isMissile
       ? this.buildMissileMesh(dir)
       : this.buildBulletMesh(dir);
@@ -440,8 +438,6 @@ export class CombatSystem {
       isMissile,
       owner:    enemy,
     });
-
-    // console.log(`🔫 Enemy fired ${isMissile ? 'MISSILE' : 'bullet'} | dist: ${Math.round(dist)}`);
   }
 
   // ── Enemy shot visuals ────────────────────────────────────────
@@ -449,32 +445,29 @@ export class CombatSystem {
   private buildBulletMesh(dir: THREE.Vector3): THREE.Object3D {
     const group = new THREE.Group();
 
-    // Core capsule
     const core = new THREE.Mesh(this.bulletGeo, this.bulletMat);
     group.add(core);
 
-    // Additive glow sprite so it's visible from far away
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({
-      color:      0xff7722,
+      color:       0xff7722,
       transparent: true,
-      opacity:    0.70,
-      blending:   THREE.AdditiveBlending,
-      depthWrite: false,
+      opacity:     0.70,
+      blending:    THREE.AdditiveBlending,
+      depthWrite:  false,
     }));
     glow.scale.set(18, 18, 1);
     group.add(glow);
 
-    // Tracer tail — thin line behind bullet
     const tailGeo = new THREE.BufferGeometry().setFromPoints([
       new THREE.Vector3(0, 0, 14),
       new THREE.Vector3(0, 0, 55),
     ]);
     const tail = new THREE.Line(tailGeo, new THREE.LineBasicMaterial({
-      color:      0xff8844,
+      color:       0xff8844,
       transparent: true,
-      opacity:    0.65,
-      blending:   THREE.AdditiveBlending,
-      depthWrite: false,
+      opacity:     0.65,
+      blending:    THREE.AdditiveBlending,
+      depthWrite:  false,
     }));
     group.add(tail);
 
@@ -488,24 +481,22 @@ export class CombatSystem {
     const body = new THREE.Mesh(this.missileBody, this.missileMat);
     group.add(body);
 
-    // Larger glow
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({
-      color:      0xff4400,
+      color:       0xff4400,
       transparent: true,
-      opacity:    0.55,
-      blending:   THREE.AdditiveBlending,
-      depthWrite: false,
+      opacity:     0.55,
+      blending:    THREE.AdditiveBlending,
+      depthWrite:  false,
     }));
     glow.scale.set(50, 50, 1);
     group.add(glow);
 
-    // Exhaust flare behind
     const exhaust = new THREE.Sprite(new THREE.SpriteMaterial({
-      color:      0xffaa00,
+      color:       0xffaa00,
       transparent: true,
-      opacity:    0.40,
-      blending:   THREE.AdditiveBlending,
-      depthWrite: false,
+      opacity:     0.40,
+      blending:    THREE.AdditiveBlending,
+      depthWrite:  false,
     }));
     exhaust.scale.set(22, 80, 1);
     exhaust.position.set(0, 0, 45);
@@ -527,11 +518,9 @@ export class CombatSystem {
 
       s.mesh.position.addScaledVector(s.velocity, delta);
 
-      // Keep orientation along velocity direction
       const dir = s.velocity.clone().normalize();
       s.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, -1), dir);
 
-      // Flicker exhaust for missiles
       if (s.isMissile) {
         const fl = 0.8 + 0.4 * Math.sin(t * 38);
         const exhaust = s.mesh.children[2] as THREE.Sprite | undefined;
@@ -541,15 +530,12 @@ export class CombatSystem {
         }
       }
 
-      // Hit test vs player
       const dist = s.mesh.position.distanceTo(cockpitPos);
       const hitR = s.isMissile ? this.HIT_R_MISSILE : this.HIT_R_BULLET;
       if (dist < hitR) {
         const dmg = s.isMissile ? this.MISSILE_DAMAGE : this.BULLET_DAMAGE;
         this.health.takeDamage(dmg);
         dead.push(s);
-
-        // console.log(`🎯 PLAYER HIT -${dmg} HP → ${this.health.hp}`);
 
         this.notifications.show({
           type:     s.isMissile ? 'warn' : 'info',
@@ -568,45 +554,6 @@ export class CombatSystem {
 
   // ── Player shots hitting enemies ──────────────────────────────
 
-  // private checkPlayerShotsHitEnemies(): void {
-  //   // Access internal list via any — or add getProjectiles() to ProjectileManager
-  //   const projs = (this.projectileManager as any).projectiles as Array<{
-  //     kind:  string;
-  //     mesh:  THREE.Object3D;
-  //     alive: boolean;
-  //   }> | undefined;
-  //   if (!projs) return;
-
-  //   for (const enemy of this.enemyManager.getEnemies()) {
-  //     // Init HP on userData if not set
-  //     if (enemy.userData.hp === undefined) {
-  //       enemy.userData.hp = 1;
-  //     }
-
-  //     for (const proj of projs) {
-  //       if (!proj.alive) continue;
-
-  //       const dist = proj.mesh.position.distanceTo(enemy.position);
-  //       const hitR = proj.kind === 'missile' ? this.ENEMY_HIT_R_MISSILE : this.ENEMY_HIT_R_BULLET;
-
-  //       if (dist < hitR) {
-  //         proj.alive = false;
-  //         const dmg  = proj.kind === 'missile' ? this.PLAYER_MISSILE_DMG : this.PLAYER_BULLET_DMG;
-  //         enemy.userData.hp -= dmg;
-          
-  //         console.log(`💥 HIT! dist=${Math.round(dist)} hitR=${hitR} dmg=${dmg} hp=${enemy.userData.hp}`);
-  //         // Hit flash
-  //         this.flashEnemy(enemy, 0.15);
-
-  //         // console.log(`💥 Enemy hit -${dmg} HP → ${enemy.userData.hp}`);
-
-  //         if (enemy.userData.hp <= 0) {
-  //           this.explodeAndRemove(enemy);
-  //         }
-  //       }
-  //     }
-  //   }
-  // }
   private checkPlayerShotsHitEnemies(): void {
     const projs = (this.projectileManager as any).projectiles as Array<{
       kind:  string;
@@ -616,7 +563,7 @@ export class CombatSystem {
     if (!projs) return;
 
     for (const proj of projs) {
-      if (!proj.alive) continue;  // ← اتحرك للـ proj هو الـ outer loop
+      if (!proj.alive) continue;
 
       for (const enemy of this.enemyManager.getEnemies()) {
         if (enemy.userData.isDead) continue;
@@ -629,7 +576,7 @@ export class CombatSystem {
         const hitR = proj.kind === 'missile' ? this.ENEMY_HIT_R_MISSILE : this.ENEMY_HIT_R_BULLET;
 
         if (dist < hitR) {
-          proj.alive = false; 
+          proj.alive = false;
           const dmg = proj.kind === 'missile' ? this.PLAYER_MISSILE_DMG : this.PLAYER_BULLET_DMG;
           enemy.userData.hp -= dmg;
           console.log(`💥 HIT! dist=${Math.round(dist)} hitR=${hitR} dmg=${dmg} hp=${enemy.userData.hp}`);
@@ -640,7 +587,7 @@ export class CombatSystem {
             this.explodeAndRemove(enemy);
           }
 
-          break; 
+          break;
         }
       }
     }
@@ -648,38 +595,15 @@ export class CombatSystem {
 
   // ── Enemy death ───────────────────────────────────────────────
 
-  // private explodeAndRemove(enemy: THREE.Object3D): void {
-  //   this.spawnExplosion(enemy.position.clone());
-  //   // Remove any shots this enemy fired
-  //   const toRemove = this.shots.filter(s => s.owner === enemy);
-  //   for (const s of toRemove) {
-  //     this.scene.remove(s.mesh);
-  //   }
-  //   this.shots = this.shots.filter(s => s.owner !== enemy);
-  //   this.cooldowns.delete(enemy.uuid);
-  //   this.shootIntervals.delete(enemy.uuid);
-  //   this.enemyManager.removeEnemy(enemy);
-
-  //   // console.log('💀 Enemy destroyed');
-
-  //   this.notifications.show({
-  //     type:     'kill',
-  //     title:    'BANDIT DOWN',
-  //     msg:      'Target eliminated',
-  //     duration: 3500,
-  //   });
-  // }
   private explodeAndRemove(enemy: THREE.Object3D): void {
     this.spawnExplosion(enemy.position.clone());
 
-    // امسح الطلقات بتاعته
     const toRemove = this.shots.filter(s => s.owner === enemy);
     for (const s of toRemove) this.scene.remove(s.mesh);
     this.shots = this.shots.filter(s => s.owner !== enemy);
     this.cooldowns.delete(enemy.uuid);
     this.shootIntervals.delete(enemy.uuid);
 
-    // وقوع لتحت ثم اختفاء
     this.startDeathFall(enemy);
 
     this.notifications.show({
@@ -689,128 +613,89 @@ export class CombatSystem {
 
     if ((window as any).missionController) {
       (window as any).missionController.onEnemyKilled();
-  }
-}
-
-private startDeathFall(enemy: THREE.Object3D): void {
-  // امنع EnemyManager من تحريكه
-  enemy.userData.isDead = true;
-
-  const FALL_DURATION = 2.0;   // ثواني الوقوع
-  const FALL_SPEED    = 8_000; // سرعة الهبوط
-  const SPIN_SPEED    = 2.5;   // سرعة الدوران
-
-  let elapsed = 0;
-
-  const tick = (delta: number) => {
-    elapsed += delta;
-    const t = elapsed / FALL_DURATION;
-
-    enemy.position.y    -= FALL_SPEED * delta;
-    enemy.rotation.z    += SPIN_SPEED * delta;
-    enemy.rotation.x    += SPIN_SPEED * 0.5 * delta;
-
-    // يصغر شوية وهو بيوقع
-    const scale = enemy.scale.x * (1 - 0.3 * delta);
-    enemy.scale.setScalar(Math.max(scale, 0));
-
-    if (t >= 1) {
-      this.enemyManager.removeEnemy(enemy);
-    } else {
-      // استدعاء نفسه في الفريم الجاي
-      requestAnimationFrame(() => tick(1/60));
     }
-  };
+  }
 
-  requestAnimationFrame(() => tick(1/60));
-}
+  private startDeathFall(enemy: THREE.Object3D): void {
+    enemy.userData.isDead = true;
 
-  // private spawnExplosion(pos: THREE.Vector3): void {
-  //   const colors = [0xff6600, 0xff3300, 0xffcc00, 0xffffff];
-  //   for (let i = 0; i < 10; i++) {
-  //     const mat = new THREE.SpriteMaterial({
-  //       color:      colors[i % colors.length],
-  //       transparent: true, opacity: 0.9,
-  //       blending:   THREE.AdditiveBlending, depthWrite: false,
-  //     });
-  //     const sprite = new THREE.Sprite(mat);
-  //     sprite.position.copy(pos).addScaledVector(
-  //       new THREE.Vector3(Math.random()-0.5, Math.random()-0.5, Math.random()-0.5).normalize(),
-  //       Math.random() * 500,
-  //     );
-  //     const s = 300 + Math.random() * 700;
-  //     sprite.scale.set(s, s, 1);
-  //     this.scene.add(sprite);
+    const FALL_DURATION = 2.0;
+    const FALL_SPEED    = 8_000;
+    const SPIN_SPEED    = 2.5;
 
-  //     let life = 0;
-  //     const id = setInterval(() => {
-  //       life += 0.016;
-  //       const t = life / 0.7;
-  //       if (t >= 1) {
-  //         this.scene.remove(sprite);
-  //         mat.dispose();
-  //         clearInterval(id);
-  //       } else {
-  //         mat.opacity = 0.9 * (1 - t * t);
-  //         sprite.scale.setScalar(s * (1 + t * 2.5));
-  //       }
-  //     }, 16);
-  //   }
-  // }
-  private spawnExplosion(pos: THREE.Vector3): void {
-  // حلقة واحدة بس — 6 sprites خفيفة
-  const layers = [
-    { color: 0xffffff, size: 400,  opacity: 1.0, speed: 0.5  }, // لمعة بيضاء لحظية
-    { color: 0xffdd00, size: 700,  opacity: 0.9, speed: 0.7  }, // كرة صفراء
-    { color: 0xff6600, size: 900,  opacity: 0.8, speed: 0.9  }, // برتقالي
-    { color: 0xff2200, size: 600,  opacity: 0.7, speed: 1.1  }, // أحمر
-    { color: 0x331100, size: 1100, opacity: 0.5, speed: 0.6  }, // دخان داكن
-    { color: 0x888888, size: 800,  opacity: 0.3, speed: 0.4  }, // دخان رمادي
-  ];
+    let elapsed = 0;
 
-  for (const layer of layers) {
-    const mat = new THREE.SpriteMaterial({
-      color:       layer.color,
-      transparent: true,
-      opacity:     layer.opacity,
-      blending:    layer.color === 0x331100 || layer.color === 0x888888
-                     ? THREE.NormalBlending
-                     : THREE.AdditiveBlending,
-      depthWrite:  false,
-    });
+    const tick = (delta: number) => {
+      elapsed += delta;
+      const t = elapsed / FALL_DURATION;
 
-    const sprite = new THREE.Sprite(mat);
-    sprite.position.copy(pos);
-    sprite.scale.setScalar(layer.size * 0.3); // يبدأ صغير
-    this.scene.add(sprite);
+      enemy.position.y -= FALL_SPEED * delta;
+      enemy.rotation.z += SPIN_SPEED * delta;
+      enemy.rotation.x += SPIN_SPEED * 0.5 * delta;
 
-    const targetSize = layer.size;
-    const duration   = 0.55 + layer.speed * 0.2;
-    let   elapsed    = 0;
-
-    const tick = () => {
-      elapsed += 0.016;
-      const t = elapsed / duration; // 0 → 1
+      const scale = enemy.scale.x * (1 - 0.3 * delta);
+      enemy.scale.setScalar(Math.max(scale, 0));
 
       if (t >= 1) {
-        this.scene.remove(sprite);
-        mat.dispose();
-        return;
+        this.enemyManager.removeEnemy(enemy);
+      } else {
+        requestAnimationFrame(() => tick(1 / 60));
       }
-
-      // يكبر بسرعة في الأول ثم يبطأ
-      const eased = 1 - Math.pow(1 - t, 2);
-      sprite.scale.setScalar(targetSize * eased);
-
-      // يعتم بالتدريج
-      mat.opacity = layer.opacity * (1 - t * t);
-
-      requestAnimationFrame(tick);
     };
 
-    requestAnimationFrame(tick);
+    requestAnimationFrame(() => tick(1 / 60));
   }
-}
+
+  private spawnExplosion(pos: THREE.Vector3): void {
+    const layers = [
+      { color: 0xffffff, size: 400,  opacity: 1.0, speed: 0.5 },
+      { color: 0xffdd00, size: 700,  opacity: 0.9, speed: 0.7 },
+      { color: 0xff6600, size: 900,  opacity: 0.8, speed: 0.9 },
+      { color: 0xff2200, size: 600,  opacity: 0.7, speed: 1.1 },
+      { color: 0x331100, size: 1100, opacity: 0.5, speed: 0.6 },
+      { color: 0x888888, size: 800,  opacity: 0.3, speed: 0.4 },
+    ];
+
+    for (const layer of layers) {
+      const mat = new THREE.SpriteMaterial({
+        color:       layer.color,
+        transparent: true,
+        opacity:     layer.opacity,
+        blending:    layer.color === 0x331100 || layer.color === 0x888888
+                       ? THREE.NormalBlending
+                       : THREE.AdditiveBlending,
+        depthWrite:  false,
+      });
+
+      const sprite = new THREE.Sprite(mat);
+      sprite.position.copy(pos);
+      sprite.scale.setScalar(layer.size * 0.3);
+      this.scene.add(sprite);
+
+      const targetSize = layer.size;
+      const duration   = 0.55 + layer.speed * 0.2;
+      let   elapsed    = 0;
+
+      const tick = () => {
+        elapsed += 0.016;
+        const t = elapsed / duration;
+
+        if (t >= 1) {
+          this.scene.remove(sprite);
+          mat.dispose();
+          return;
+        }
+
+        const eased = 1 - Math.pow(1 - t, 2);
+        sprite.scale.setScalar(targetSize * eased);
+        mat.opacity = layer.opacity * (1 - t * t);
+
+        requestAnimationFrame(tick);
+      };
+
+      requestAnimationFrame(tick);
+    }
+  }
 
   // ── Helpers ───────────────────────────────────────────────────
 

@@ -15,11 +15,38 @@ export class MissionController {
   private state: MissionState = MissionState.START;
   private enemyKilledCount = 0;
   private totalInWaveKilled = 0;
+  private pendingTimers: ReturnType<typeof setTimeout>[] = [];
 
   constructor(private engine: Engine) {}
 
   public start() {
     this.runStateLogic();
+  }
+
+  // ✅ Reset everything back to initial state (called on restart)
+  public reset() {
+    // Cancel all pending timers so old logic doesn't fire after restart
+    for (const t of this.pendingTimers) clearTimeout(t);
+    this.pendingTimers = [];
+
+    // Remove any leftover decision card from the DOM
+    document.getElementById('decision-card')?.remove();
+
+    // Reset state machine
+    this.state = MissionState.START;
+    this.enemyKilledCount = 0;
+    this.totalInWaveKilled = 0;
+  }
+
+  // ✅ Helper: tracked setTimeout so we can cancel all on reset
+  private later(fn: () => void, ms: number) {
+    const id = setTimeout(() => {
+      // Remove from list once it fires
+      this.pendingTimers = this.pendingTimers.filter(t => t !== id);
+      fn();
+    }, ms);
+    this.pendingTimers.push(id);
+    return id;
   }
 
   private async runStateLogic() {
@@ -31,25 +58,23 @@ export class MissionController {
           msg: 'توجه حالاً إلى المنصورة للمساعدة في المعركة!',
           duration: 5000
         });
-        setTimeout(() => {
+        this.later(() => {
           this.state = MissionState.FIRST_WAVE;
           this.spawnWave(2);
         }, 6000);
         break;
 
       case MissionState.SOLITARY_PLANE:
-        // ✅ إضافة وقت قبل ظهور الطيارة الثالثة
-        setTimeout(() => {
+        this.later(() => {
           this.engine.notif.show({
             type: 'warn', title: 'تحذير', msg: 'طيارة معادية تقترب من الخلف!', duration: 3000
           });
           this.spawnWave(1);
-        }, 3000); 
+        }, 3000);
         break;
 
       case MissionState.SUPPORT_DECISION_SALHIA:
-        // ✅ إضافة وقت بين موت الطيارة ورسالة الصالحية
-        setTimeout(() => {
+        this.later(() => {
           this.showDecision('دعم مطلوب: الصالحية', 'أرسل سرب دعم إلى منطقة الصالحية الآن؟', (count) => {
             this.engine.notif.show({
               type: 'success', title: 'تم الإرسال', msg: `تم توجيه ${count} طائرات للصالحية`,
@@ -57,12 +82,11 @@ export class MissionController {
             this.state = MissionState.SUPPORT_DECISION_TANTA;
             this.runStateLogic();
           });
-        }, 4000); // 4 ثواني هدوء
+        }, 4000);
         break;
 
       case MissionState.SUPPORT_DECISION_TANTA:
-        // ✅ إضافة وقت بين قرار الصالحية وقرار طنطا
-        setTimeout(() => {
+        this.later(() => {
           this.showDecision('دعم مطلوب: طنطا', 'تحتاج قاعدة طنطا إلى مساندة فورية!', (count) => {
             this.engine.notif.show({
               type: 'success', title: 'تم الإرسال', msg: `تم توجيه ${count} طائرات لطنطا`,
@@ -70,14 +94,13 @@ export class MissionController {
             this.state = MissionState.APPROACHING_MANSOURA;
             this.runStateLogic();
           });
-        }, 5000); // 5 ثواني فاصل
+        }, 5000);
         break;
 
       case MissionState.APPROACHING_MANSOURA:
-        // ✅ إضافة وقت قبل رسالة الاقتراب من المنصورة
-        setTimeout(() => {
+        this.later(() => {
           this.engine.notif.show({ type: 'info', title: 'ملاحة', msg: 'أنت تقترب من هدفك في المنصورة...' });
-          setTimeout(() => {
+          this.later(() => {
             this.engine.notif.show({ type: 'warn', title: 'وصلت', msg: 'لقد وصلت إلى المنصورة! استعد للمعركة الكبرى!' });
             this.state = MissionState.MANSOURA_BATTLE;
             this.enemyKilledCount = 0;
@@ -90,12 +113,12 @@ export class MissionController {
 
   public onEnemyKilled() {
     this.totalInWaveKilled++;
-    
+
     if (this.state === MissionState.FIRST_WAVE && this.totalInWaveKilled >= 2) {
       this.totalInWaveKilled = 0;
       this.state = MissionState.SOLITARY_PLANE;
       this.runStateLogic();
-    } 
+    }
     else if (this.state === MissionState.SOLITARY_PLANE && this.totalInWaveKilled >= 1) {
       this.totalInWaveKilled = 0;
       this.state = MissionState.SUPPORT_DECISION_SALHIA;
@@ -104,22 +127,24 @@ export class MissionController {
     else if (this.state === MissionState.MANSOURA_BATTLE) {
       this.enemyKilledCount++;
       if (this.enemyKilledCount < 6) {
-        setTimeout(() => this.spawnWave(1), 2000); // تأخير بسيط بين كل طيارة تظهر في المعركة الكبرى
+        this.later(() => this.spawnWave(1), 2000);
       } else {
-        setTimeout(() => this.victory(), 3000);
+        this.later(() => this.victory(), 3000);
       }
     }
   }
 
   private spawnWave(count: number) {
-    this.totalInWaveKilled = 0; 
-    for(let i=0; i<count; i++) {
-        (this.engine as any).enemies.spawnEnemy(); 
+    this.totalInWaveKilled = 0;
+    for (let i = 0; i < count; i++) {
+      (this.engine as any).enemies.spawnEnemy();
     }
   }
 
-  // ✅ نظام اتخاذ القرار بتصميم يشبه النوتفيكيشن
   private showDecision(title: string, text: string, onSelect: (count: number) => void) {
+    // Remove any existing card first (safety)
+    document.getElementById('decision-card')?.remove();
+
     const card = document.createElement('div');
     card.id = 'decision-card';
     card.style.cssText = `
