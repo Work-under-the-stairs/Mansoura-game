@@ -21,6 +21,7 @@ export class EnemyManager {
   private enemies:   THREE.Object3D[] = [];
   private model:     THREE.Object3D | null = null;
   private modelReady = false;
+  private readonly _targetQuat = new THREE.Quaternion(); // في الـ constructor
 
   private readonly TOTAL_ENEMIES  = 3;
   private readonly SPAWN_INTERVAL = 2;
@@ -191,34 +192,41 @@ export class EnemyManager {
     this._forward.setFromMatrixColumn(this.cockpit.model.matrixWorld, 2).normalize();
     this._right.setFromMatrixColumn(this.cockpit.model.matrixWorld, 0).normalize();
 
-    for (let i = 0; i < this.enemies.length; i++) {
-      const enemy = this.enemies[i];
-      if (enemy.userData.isDead) continue;
+    // جوه الـ loop بتاع الـ enemies في EnemyManager.update
+for (let i = 0; i < this.enemies.length; i++) {
+  const enemy = this.enemies[i];
+  if (enemy.userData.isDead) continue;
 
-      const age = this.elapsedTime - (enemy.userData.spawnTime as number ?? 0);
-      if (age < LAG_DURATION) continue;
+  const age = this.elapsedTime - (enemy.userData.spawnTime as number ?? 0);
+  if (age < LAG_DURATION) continue;
 
-      this._targetPos
-        .copy(this._cockpitPos)
-        .addScaledVector(this._forward, COMBAT_DISTANCE)
-        .addScaledVector(this._right, enemy.userData.offsetX);
+  // 1. تحديد مكان الهدف (Target Position)
+  // بدل ما يكون COMBAT_DISTANCE ثابت، هنخليه يقل شوية لو اللاعب سريع
+  // ده بيدي إيحاء إن اللاعب بيكسب أرض (Gaining ground)
+  const currentSpeed = this.cockpit.currentSpeed || 255;
+  const speedFactor = THREE.MathUtils.mapLinear(currentSpeed, 200, 500, 1.2, 0.8);
+  
+  this._targetPos
+    .copy(this._cockpitPos)
+    .addScaledVector(this._forward, COMBAT_DISTANCE * speedFactor) 
+    .addScaledVector(this._right, enemy.userData.offsetX);
 
-      this._targetPos.y = this._cockpitPos.y;
+  this._targetPos.y = this._cockpitPos.y;
 
-      const trackingSpeed = THREE.MathUtils.clamp(
-        (age - LAG_DURATION) * 0.04, 0.01, 0.05,
-      );
-      enemy.position.lerp(this._targetPos, delta * trackingSpeed * 40);
+  // 2. تقليل سرعة الـ Lerp عشان العدو ميهربش "بحدة"
+  // كل ما كان الـ trackingSpeed أقل، كل ما اللاعب قدر يلحقه أسرع
+  const trackingSpeed = 0.02; // ثبتيها على قيمة هادية عشان المناورة تبقى أسهل
+  
+  // تحريك العدو للهدف بنعومة
+  enemy.position.lerp(this._targetPos, delta * trackingSpeed * 20);
 
-      // ✅ lookAt بدون new Object3D مؤقت
-      const targetQ = enemy.quaternion.clone();
-      enemy.lookAt(this._cockpitPos);
-      targetQ.copy(enemy.quaternion);
-      enemy.quaternion.slerp(targetQ, delta * 2.0);
-      enemy.rotateY(Math.PI / 2);
+  // 3. توجيه العدو (LookAt)
+  this._targetQuat.copy(enemy.quaternion);
+  enemy.lookAt(this._cockpitPos);
+  this._targetQuat.copy(enemy.quaternion);
+  enemy.quaternion.slerp(this._targetQuat, delta * 1.5); // تقليل سرعة الدوران عشان ميرقصش منك
 
-      // ✅ scale ثابت محسوب مرة واحدة في الـ constructor
-      enemy.scale.setScalar(this._stableScale);
-    }
+  enemy.rotateY(Math.PI / 2);
+}
   }
 }

@@ -105,8 +105,10 @@ export class WeaponSystem {
   private bulletCooldown  = 0;
   private missileCooldown = 0;
   private barrelIndex     = 0;
+  
 
   private muzzleFlashes: MuzzleFlash[] = [];
+  // private muzzleFlash: MuzzleFlash;
   private flashTimers:   number[]      = [];
 
   // Flash lifetime — short; real muzzle flash is < 1 frame at 60 fps

@@ -337,8 +337,8 @@ export class CombatSystem {
   private readonly PLAYER_MISSILE_DMG  = 40;
 
   // ✅ FIX ③ — مربعات نصف قطر الـ hitbox بدل sqrt كل frame
-  private readonly ENEMY_HIT_RADIUS_SQ_BULLET  = 3000 * 3000;
-  private readonly ENEMY_HIT_RADIUS_SQ_MISSILE = 3000 * 3000;
+  private readonly ENEMY_HIT_RADIUS_SQ_BULLET  = 1000 * 1000;
+  private readonly ENEMY_HIT_RADIUS_SQ_MISSILE = 1000 * 1000;
 
   // ── Shared geometry / material ───────────────────────────────
   private readonly bulletGeo:   THREE.CylinderGeometry;
@@ -371,6 +371,7 @@ export class CombatSystem {
   private readonly _diffVec    = new THREE.Vector3();
   private readonly _forward    = new THREE.Vector3(0, 0, -1);
 
+  private readonly _projWorldPos = new THREE.Vector3();
   // ✅ FIX ⑤ — Flash enemy: cache للمواد + timers بدل rAF
   private readonly _flashMaterialCache = new Map<
     string,
@@ -762,60 +763,155 @@ export class CombatSystem {
 
   // ✅ FIX ③ — distanceSq + صفر Box3/setFromObject
   // ✅ NEW   — نظام HP احترافي مع ENEMY_MAX_HP
-  private checkPlayerShotsHitEnemies(): void {
-    const projs = (this.projectileManager as any).projectiles as Array<{
-      kind:  string;
-      mesh:  THREE.Object3D;
-      alive: boolean;
-    }> | undefined;
-    if (!projs) return;
+  // private checkPlayerShotsHitEnemies(): void {
+  //   const projs = (this.projectileManager as any).projectiles as Array<{
+  //     kind:  string;
+  //     mesh:  THREE.Object3D;
+  //     alive: boolean;
+  //   }> | undefined;
+  //   if (!projs) return;
 
-    const enemies = this.enemyManager.getEnemies();
+  //   const enemies = this.enemyManager.getEnemies();
 
-    for (const proj of projs) {
-      if (!proj.alive) continue;
+  //   for (const proj of projs) {
+  //     if (!proj.alive) continue;
 
-      const hitRadiusSq = proj.kind === 'missile'
-        ? this.ENEMY_HIT_RADIUS_SQ_MISSILE
-        : this.ENEMY_HIT_RADIUS_SQ_BULLET;
+  //     const hitRadiusSq = proj.kind === 'missile'
+  //       ? this.ENEMY_HIT_RADIUS_SQ_MISSILE
+  //       : this.ENEMY_HIT_RADIUS_SQ_BULLET;
 
-      for (const enemy of enemies) {
-        if (enemy.userData.isDead) continue;
+  //     for (const enemy of enemies) {
+  //       if (enemy.userData.isDead) continue;
 
-        // ✅ ابدأ الـ HP من ENEMY_MAX_HP لما العدو يتشاف أول مرة
-        if (enemy.userData.hp === undefined) {
-          enemy.userData.hp = this.ENEMY_MAX_HP;
+  //       // ✅ ابدأ الـ HP من ENEMY_MAX_HP لما العدو يتشاف أول مرة
+  //       if (enemy.userData.hp === undefined) {
+  //         enemy.userData.hp = this.ENEMY_MAX_HP;
+  //       }
+
+  //       const distSq = this._diffVec
+  //         .subVectors(proj.mesh.position, enemy.position)
+  //         .lengthSq();
+
+  //       if (distSq < hitRadiusSq) {
+  //         proj.alive = false;
+
+  //         // ✅ نظام HP — طرح الدمج وتشيك الموت
+  //         const dmg = proj.kind === 'missile'
+  //           ? this.PLAYER_MISSILE_DMG
+  //           : this.PLAYER_BULLET_DMG;
+
+  //         enemy.userData.hp -= dmg;
+
+  //         if (enemy.userData.hp > 0) {
+  //           // لسه حي — وميض بس
+  //           this.flashEnemy(enemy, 0.15);
+  //         } else {
+  //           // مات — وميض + انفجار
+  //           enemy.userData.isDead = true;
+  //           this.flashEnemy(enemy, 0.10);
+  //           this.explodeAndRemove(enemy);
+  //         }
+
+  //         break; // الرصاصة خلصت — مش محتاج نكمل على باقي الأعداء
+  //       }
+  //     }
+  //   }
+  // }
+//   private checkPlayerShotsHitEnemies(): void {
+//   const projs = (this.projectileManager as any).projectiles as Array<{
+//     kind: string; mesh: THREE.Object3D; alive: boolean;
+//   }> | undefined;
+//   if (!projs) return;
+
+//   const enemies = this.enemyManager.getEnemies();
+
+//   for (const proj of projs) {
+//     if (!proj.alive) continue;
+
+//     // ✅ اجيب الـ world position الحقيقي
+//     proj.mesh.getWorldPosition(this._projWorldPos);
+
+//     const hitRadiusSq = proj.kind === 'missile'
+//       ? this.ENEMY_HIT_RADIUS_SQ_MISSILE
+//       : this.ENEMY_HIT_RADIUS_SQ_BULLET;
+
+//     for (const enemy of enemies) {
+//       if (enemy.userData.isDead) continue;
+//       if (enemy.userData.hp === undefined) enemy.userData.hp = this.ENEMY_MAX_HP;
+
+//       const distSq = this._diffVec
+//         .subVectors(this._projWorldPos, enemy.position) // ✅ world vs world
+//         .lengthSq();
+
+//       if (distSq < hitRadiusSq) {
+//         proj.alive = false;
+//         const dmg = proj.kind === 'missile' ? this.PLAYER_MISSILE_DMG : this.PLAYER_BULLET_DMG;
+//         enemy.userData.hp -= dmg;
+
+//         if (enemy.userData.hp > 0) {
+//           this.flashEnemy(enemy, 0.15);
+//         } else {
+//           enemy.userData.isDead = true;
+//           this.flashEnemy(enemy, 0.10);
+//           this.explodeAndRemove(enemy);
+//         }
+//         break;
+//       }
+//     }
+//   }
+// }
+
+// ✅ FIX ⑥ — تحويل مكان الرصاصة لـ World Space قبل مقارنة المسافة
+private checkPlayerShotsHitEnemies(): void {
+  // بنجيب الطلقات من الـ ProjectileManager
+  const projs = (this.projectileManager as any).projectiles as Array<{
+    kind: string; mesh: THREE.Object3D; alive: boolean;
+  }> | undefined;
+  
+  if (!projs) return;
+
+  const enemies = this.enemyManager.getEnemies();
+
+  for (const proj of projs) {
+    if (!proj.alive) continue;
+
+    // 1. دي أهم خطوة: نجيب مكان الرصاصة في العالم الحقيقي
+    // بنستخدم الـ Vector اللي عرفناه فوق عشان مـنعملش New كل Frame
+    proj.mesh.getWorldPosition(this._projWorldPos);
+
+    const hitRadiusSq = proj.kind === 'missile'
+      ? this.ENEMY_HIT_RADIUS_SQ_MISSILE
+      : this.ENEMY_HIT_RADIUS_SQ_BULLET;
+
+    for (const enemy of enemies) {
+      if (enemy.userData.isDead) continue;
+
+      // التأكد إن العدو عنده HP
+      if (enemy.userData.hp === undefined) enemy.userData.hp = this.ENEMY_MAX_HP;
+
+      // 2. مقارنة المسافة بين (رصاصة في الـ World) و (عدو في الـ World)
+      const distSq = this._diffVec
+        .subVectors(this._projWorldPos, enemy.position)
+        .lengthSq();
+
+      if (distSq < hitRadiusSq) {
+        proj.alive = false; // الرصاصة اختفت
+        
+        const dmg = proj.kind === 'missile' ? this.PLAYER_MISSILE_DMG : this.PLAYER_BULLET_DMG;
+        enemy.userData.hp -= dmg;
+
+        if (enemy.userData.hp > 0) {
+          this.flashEnemy(enemy, 0.15); // وميض إصابة
+        } else {
+          enemy.userData.isDead = true;
+          this.flashEnemy(enemy, 0.10);
+          this.explodeAndRemove(enemy); // انفجار وموت
         }
-
-        const distSq = this._diffVec
-          .subVectors(proj.mesh.position, enemy.position)
-          .lengthSq();
-
-        if (distSq < hitRadiusSq) {
-          proj.alive = false;
-
-          // ✅ نظام HP — طرح الدمج وتشيك الموت
-          const dmg = proj.kind === 'missile'
-            ? this.PLAYER_MISSILE_DMG
-            : this.PLAYER_BULLET_DMG;
-
-          enemy.userData.hp -= dmg;
-
-          if (enemy.userData.hp > 0) {
-            // لسه حي — وميض بس
-            this.flashEnemy(enemy, 0.15);
-          } else {
-            // مات — وميض + انفجار
-            enemy.userData.isDead = true;
-            this.flashEnemy(enemy, 0.10);
-            this.explodeAndRemove(enemy);
-          }
-
-          break; // الرصاصة خلصت — مش محتاج نكمل على باقي الأعداء
-        }
+        break; 
       }
     }
   }
+}
 
 
   // ═══════════════════════════════════════════════════════════
