@@ -822,7 +822,7 @@ for (let i = 0; i < MAX_BULLETS; i++) {
 
       if (distSq < missileHitR * missileHitR) {
         m.life = 0; // هيتشال في الـ update الجاي
-        console.log(`HIT distSq=${Math.round(Math.sqrt(distSq))} hitR=${bulletHitR}`);
+        // console.log(`HIT distSq=${Math.round(Math.sqrt(distSq))} hitR=${bulletHitR}`);
         onHit(enemy, 'missile');
         break;
       }

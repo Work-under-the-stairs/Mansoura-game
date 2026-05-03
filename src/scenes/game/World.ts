@@ -13,8 +13,7 @@ export class World {
   private readonly options: WorldOptions;
   private time = 0;
 
-  private sunLight!: THREE.DirectionalLight;
-  private fillLight!: THREE.HemisphereLight;
+  // ✅ أُزيلت الإضاءة المكررة من هنا — Engine.setupLights() بتعملها
   private renderer: THREE.WebGLRenderer | null = null;
   private loadingManager: THREE.LoadingManager;
 
@@ -80,17 +79,10 @@ export class World {
 
   private build(): void {
     this.scene.add(this.root);
-    this.createEnvironment();
+    // ✅ createEnvironment() أُزيلت — الإضاءة موجودة في Engine.setupLights()
   }
 
-  private createEnvironment(): void {
-    this.fillLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.0);
-    this.root.add(this.fillLight);
-
-    this.sunLight = new THREE.DirectionalLight(0xffffff, 2.0);
-    this.sunLight.position.set(100, 200, 100);
-    this.root.add(this.sunLight);
-  }
+  // ✅ createEnvironment() أُزيلت بالكامل عشان مكانش فيها غير إضاءة مكررة
 
   /**
    * Call each frame.

@@ -460,8 +460,8 @@ export class CombatSystem {
   private readonly SHOOT_INTERVAL_MIN = 2.0;
   private readonly SHOOT_INTERVAL_MAX = 5.0;
 
-  private readonly PLAYER_BULLET_DMG   = 20;
-  private readonly PLAYER_MISSILE_DMG  = 40;
+  private readonly PLAYER_BULLET_DMG   = 25;
+  private readonly PLAYER_MISSILE_DMG  = 50;
   // private readonly ENEMY_HIT_R_BULLET  = 3000;
   private readonly ENEMY_HIT_R_BULLET  = 9000;
   private readonly ENEMY_HIT_R_MISSILE = 3500;
@@ -806,7 +806,7 @@ export class CombatSystem {
     const dmg = kind === 'missile' ? this.PLAYER_MISSILE_DMG : this.PLAYER_BULLET_DMG;
     enemy.userData.hp -= dmg;
 
-    console.log(`💥 HIT! kind=${kind} dmg=${dmg} hp=${enemy.userData.hp}`);
+    // console.log(`💥 HIT! kind=${kind} dmg=${dmg} hp=${enemy.userData.hp}`);
     this.flashEnemy(enemy, 0.15);
 
     if (enemy.userData.hp <= 0) {

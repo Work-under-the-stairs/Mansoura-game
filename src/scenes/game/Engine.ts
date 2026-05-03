@@ -265,9 +265,10 @@ export class Engine {
     sunLight.position.set(-9000, 8500, -5000);
     sunLight.castShadow = !this.isMobile;
 
+    // ✅ Shadow map: 1024 على desktop (كان 2048) — نفس الكواليتي تقريباً، نص حساب GPU
     sunLight.shadow.mapSize.set(
-      this.isMobile ? 512 : 2048,
-      this.isMobile ? 512 : 2048,
+      this.isMobile ? 512 : 1024,
+      this.isMobile ? 512 : 1024,
     );
     sunLight.shadow.camera.left   = -20000;
     sunLight.shadow.camera.right  =  20000;
@@ -275,9 +276,16 @@ export class Engine {
     sunLight.shadow.camera.bottom = -20000;
     sunLight.shadow.camera.far    =  50000;
 
+    // ✅ الـ sun ثابت مش بيتحرك — نوقف تحديث الـ matrix تلقائياً
+    sunLight.matrixAutoUpdate = false;
+    sunLight.updateMatrix();
+
     this.scene.add(sunLight);
 
     const hemi = new THREE.HemisphereLight(0xe7f3ff, 0x97886a, 1.0);
+    // ✅ الـ hemi ثابت كمان
+    hemi.matrixAutoUpdate = false;
+    hemi.updateMatrix();
     this.scene.add(hemi);
   }
 
