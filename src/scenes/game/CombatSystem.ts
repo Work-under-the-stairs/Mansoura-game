@@ -423,11 +423,96 @@ interface EnemyShot {
 }
 
 // ───────────────────────────────────────────────────────────────
+//  Managed particle — driven by update(delta), zero rAF
+// ───────────────────────────────────────────────────────────────
+interface ManagedParticle {
+  sprite: THREE.Sprite;
+  mat: THREE.SpriteMaterial;
+  // flat velocity scalars — no Vector3 object allocation
+  vx: number;
+  vy: number;
+  vz: number;
+  life: number;
+  maxLife: number;
+  startScale: number;
+  endScaleMulti: number;  // sprite.scale = startScale * lerp(1, endScaleMulti, t)
+  kind: 'flash' | 'smoke' | 'debris' | 'fire' | 'stem';
+  rotSpeed: number;
+}
+
+// Falling enemy entry — replaces the rAF-based startDeathFall
+interface FallingEnemy {
+  obj: THREE.Object3D;
+  elapsed: number;
+}
+
+// ───────────────────────────────────────────────────────────────
+//  Shared canvas textures — created once, reused forever
+// ───────────────────────────────────────────────────────────────
+let _flashTex:  THREE.CanvasTexture | null = null;
+let _smokeTex:  THREE.CanvasTexture | null = null;
+let _debrisTex: THREE.CanvasTexture | null = null;
+
+function getFlashTexture(): THREE.CanvasTexture {
+  if (_flashTex) return _flashTex;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 64;
+  const ctx = canvas.getContext('2d')!;
+  const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0,   'rgba(255,255,255,1)');
+  g.addColorStop(0.3, 'rgba(255,200,100,0.9)');
+  g.addColorStop(0.6, 'rgba(255,100,0,0.6)');
+  g.addColorStop(0.8, 'rgba(255,50,0,0.2)');
+  g.addColorStop(1,   'rgba(255,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 64, 64);
+  _flashTex = new THREE.CanvasTexture(canvas);
+  _flashTex.needsUpdate = true;
+  return _flashTex;
+}
+
+function getSmokeTexture(): THREE.CanvasTexture {
+  if (_smokeTex) return _smokeTex;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 128;
+  const ctx = canvas.getContext('2d')!;
+  for (let i = 0; i < 8; i++) {
+    const ox = (Math.random() - 0.5) * 40, oy = (Math.random() - 0.5) * 40;
+    const r = 30 + Math.random() * 25;
+    const gr = ctx.createRadialGradient(64+ox, 64+oy, 0, 64+ox, 64+oy, r);
+    gr.addColorStop(0,   `rgba(100,100,100,${0.3 + Math.random() * 0.2})`);
+    gr.addColorStop(0.5, `rgba(80,80,80,${0.15 + Math.random() * 0.1})`);
+    gr.addColorStop(1,   'rgba(60,60,60,0)');
+    ctx.fillStyle = gr; ctx.fillRect(0, 0, 128, 128);
+  }
+  _smokeTex = new THREE.CanvasTexture(canvas);
+  _smokeTex.needsUpdate = true;
+  return _smokeTex;
+}
+
+function getDebrisTexture(): THREE.CanvasTexture {
+  if (_debrisTex) return _debrisTex;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 16;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = 'rgba(80,60,40,0.9)';
+  ctx.fillRect(4,4,8,3); ctx.fillRect(6,7,5,4); ctx.fillRect(3,10,7,3);
+  ctx.fillStyle = 'rgba(120,80,50,0.7)';
+  ctx.fillRect(5,5,4,2);
+  _debrisTex = new THREE.CanvasTexture(canvas);
+  _debrisTex.needsUpdate = true;
+  return _debrisTex;
+}
+
+// ───────────────────────────────────────────────────────────────
 //  CombatSystem
 // ───────────────────────────────────────────────────────────────
 export class CombatSystem {
   public readonly health: HealthSystem;
   private readonly sound = new SoundSystem();
+
+  private readonly isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+    || navigator.maxTouchPoints > 1;
 
   private readonly ENGAGE_DIST = 120_000;
   private readonly BULLET_SPEED = 12_000;
@@ -450,14 +535,33 @@ export class CombatSystem {
   private readonly bulletMat: THREE.MeshBasicMaterial;
   private readonly missileBody: THREE.CylinderGeometry;
   private readonly missileMat: THREE.MeshBasicMaterial;
-  private readonly missileGlow: THREE.SpriteMaterial;
 
   private shots: EnemyShot[] = [];
   private cooldowns = new Map<string, number>();
   private shootIntervals = new Map<string, number>();
 
-  // Cache for explosion textures
-  private cachedTextures: Map<string, THREE.CanvasTexture> = new Map();
+  // ✅ Managed particle pool — updated every frame via update(delta), zero rAF
+  private particles: ManagedParticle[] = [];
+
+  // ✅ Falling enemies — updated every frame, no rAF
+  private fallingEnemies: FallingEnemy[] = [];
+
+  // ✅ Shockwave rings — updated every frame, no rAF
+  private shockwaveRings: Array<{
+    mesh: THREE.Mesh;
+    geo: THREE.RingGeometry;
+    mat: THREE.MeshBasicMaterial;
+    life: number;
+    maxLife: number;
+    startY: number;
+  }> = [];
+
+  // Particle budget by device
+  private readonly FLASH_COUNT:  number;
+  private readonly FIRE_COUNT:   number;
+  private readonly SMOKE_COUNT:  number;
+  private readonly DEBRIS_COUNT: number;
+  private readonly STEM_COUNT:   number;
 
   constructor(
     private scene: THREE.Scene,
@@ -469,6 +573,13 @@ export class CombatSystem {
     private onRestartCallback?: () => void,
     private onExitCallback?: () => void,
   ) {
+    // ✅ Drastically lower counts on mobile — desktop keeps the spectacle
+    this.FLASH_COUNT  = this.isMobile ? 3  : 6;
+    this.FIRE_COUNT   = this.isMobile ? 20 : 120;
+    this.SMOKE_COUNT  = this.isMobile ? 8  : 25;
+    this.DEBRIS_COUNT = this.isMobile ? 15 : 80;
+    this.STEM_COUNT   = this.isMobile ? 5  : 20;
+
     this.health = new HealthSystem(
       cockpit,
       () => {
@@ -491,13 +602,6 @@ export class CombatSystem {
     this.missileBody = new THREE.CylinderGeometry(5, 5, 70, 8);
     this.missileBody.rotateX(Math.PI / 2);
     this.missileMat = new THREE.MeshBasicMaterial({ color: 0xff2200 });
-    this.missileGlow = new THREE.SpriteMaterial({
-      color: 0xff4400,
-      transparent: true,
-      opacity: 0.55,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    });
   }
 
   // ── Public API ────────────────────────────────────────────────
@@ -517,6 +621,28 @@ export class CombatSystem {
     this.shots = [];
     this.cooldowns.clear();
     this.shootIntervals.clear();
+
+    // Clear all managed particles
+    for (const p of this.particles) {
+      this.scene.remove(p.sprite);
+      p.mat.dispose();
+    }
+    this.particles = [];
+
+    // Clear falling enemies
+    for (const fe of this.fallingEnemies) {
+      this.enemyManager.removeEnemy(fe.obj);
+    }
+    this.fallingEnemies = [];
+
+    // Clear shockwave rings
+    for (const r of this.shockwaveRings) {
+      this.scene.remove(r.mesh);
+      r.geo.dispose();
+      r.mat.dispose();
+    }
+    this.shockwaveRings = [];
+
     this.health.reset();
     this.showHUD();
   }
@@ -530,6 +656,12 @@ export class CombatSystem {
 
     this.updateEnemyShooting(delta, cockpitPos);
     this.updateEnemyShots(delta, cockpitPos);
+
+    // ✅ All particle/physics updates driven here — zero extra rAF loops
+    this.updateParticles(delta);
+    this.updateShockwaveRings(delta);
+    this.updateFallingEnemies(delta);
+
     this.projectileManager.checkHits(
       this.enemyManager.getEnemies(),
       this.ENEMY_HIT_R_BULLET,
@@ -542,18 +674,166 @@ export class CombatSystem {
   public dispose(): void {
     for (const s of this.shots) this.scene.remove(s.mesh);
     this.shots = [];
+
+    for (const p of this.particles) {
+      this.scene.remove(p.sprite);
+      p.mat.dispose();
+    }
+    this.particles = [];
+
+    for (const r of this.shockwaveRings) {
+      this.scene.remove(r.mesh);
+      r.geo.dispose();
+      r.mat.dispose();
+    }
+    this.shockwaveRings = [];
+
     this.bulletGeo.dispose();
     this.bulletMat.dispose();
     this.missileBody.dispose();
     this.missileMat.dispose();
-    this.missileGlow.dispose();
     this.health.dispose();
-    
-    // Dispose cached textures
-    for (const texture of this.cachedTextures.values()) {
-      texture.dispose();
+
+    // Dispose shared textures
+    _flashTex?.dispose();  _flashTex  = null;
+    _smokeTex?.dispose();  _smokeTex  = null;
+    _debrisTex?.dispose(); _debrisTex = null;
+  }
+
+  // ── Particle pool update — the ONLY place particles move ─────
+
+  private updateParticles(delta: number): void {
+    let i = this.particles.length;
+    while (i--) {
+      const p = this.particles[i];
+      p.life -= delta;
+
+      if (p.life <= 0) {
+        this.scene.remove(p.sprite);
+        p.mat.dispose();
+        this.particles.splice(i, 1);
+        continue;
+      }
+
+      const t = 1 - p.life / p.maxLife; // 0 = born, 1 = dead
+
+      // Move
+      p.sprite.position.x += p.vx * delta;
+      p.sprite.position.y += p.vy * delta;
+      p.sprite.position.z += p.vz * delta;
+
+      // Apply gravity to fire and debris
+      if (p.kind === 'fire' || p.kind === 'debris') {
+        p.vy -= 25 * delta;
+      }
+
+      // Scale
+      const scale = p.startScale * (1 + t * (p.endScaleMulti - 1));
+      p.sprite.scale.setScalar(scale);
+
+      // Rotation for smoke/debris
+      if (p.rotSpeed !== 0) {
+        p.mat.rotation += p.rotSpeed * delta;
+      }
+
+      // Opacity curves per kind
+      switch (p.kind) {
+        case 'flash':
+        case 'stem':
+          p.mat.opacity = Math.max(0, 1 - Math.pow(t, 1.5));
+          break;
+        case 'fire':
+          p.mat.opacity = Math.max(0, 0.95 * (1 - Math.pow(t, 1.6)));
+          break;
+        case 'smoke':
+          p.mat.opacity = Math.max(0, p.mat.opacity * 1); // handled via startOpacity stored in maxLife trick
+          // Simple fade out for smoke
+          p.mat.opacity = Math.max(0, 0.55 * (1 - Math.pow(t, 1.4)));
+          break;
+        case 'debris':
+          p.mat.opacity = Math.max(0, 0.9 * (1 - t));
+          break;
+      }
     }
-    this.cachedTextures.clear();
+  }
+
+  // ── Shockwave rings — updated per frame, no rAF ──────────────
+
+  private updateShockwaveRings(delta: number): void {
+    let i = this.shockwaveRings.length;
+    while (i--) {
+      const r = this.shockwaveRings[i];
+      r.life -= delta;
+      if (r.life <= 0) {
+        this.scene.remove(r.mesh);
+        r.geo.dispose();
+        r.mat.dispose();
+        this.shockwaveRings.splice(i, 1);
+        continue;
+      }
+      const t = 1 - r.life / r.maxLife;
+      const scale = 1 + t * 20;
+      r.mesh.scale.setScalar(scale);
+      r.mat.opacity = Math.max(0, 0.75 * (1 - Math.pow(t, 1.4)));
+    }
+  }
+
+  // ── Falling enemies — updated per frame, no rAF ──────────────
+
+  private updateFallingEnemies(delta: number): void {
+    const FALL_DURATION = 2.0;
+    const FALL_SPEED    = 8_000;
+    const SPIN_SPEED    = 2.5;
+
+    let i = this.fallingEnemies.length;
+    while (i--) {
+      const fe = this.fallingEnemies[i];
+      fe.elapsed += delta;
+      fe.obj.position.y     -= FALL_SPEED * delta;
+      fe.obj.rotation.z     += SPIN_SPEED * delta;
+      fe.obj.rotation.x     += SPIN_SPEED * 0.5 * delta;
+      fe.obj.scale.setScalar(Math.max(fe.obj.scale.x * (1 - 0.3 * delta), 0));
+
+      if (fe.elapsed >= FALL_DURATION) {
+        this.enemyManager.removeEnemy(fe.obj);
+        this.fallingEnemies.splice(i, 1);
+      }
+    }
+  }
+
+  // ── Helper: add a particle to the managed pool ───────────────
+
+  private addParticle(
+    kind:           ManagedParticle['kind'],
+    tex:            THREE.Texture,
+    color:          number,
+    opacity:        number,
+    blending:       THREE.Blending,
+    pos:            THREE.Vector3,
+    scale:          number,
+    endScaleMulti:  number,
+    life:           number,
+    vx: number, vy: number, vz: number,
+    rotSpeed = 0,
+  ): void {
+    // Hard cap — prevent runaway accumulation on mobile
+    const MAX_PARTICLES = this.isMobile ? 80 : 600;
+    if (this.particles.length >= MAX_PARTICLES) return;
+
+    const mat = new THREE.SpriteMaterial({
+      map: tex,
+      color,
+      transparent: true,
+      opacity,
+      blending,
+      depthWrite: false,
+    });
+    const sprite = new THREE.Sprite(mat);
+    sprite.position.copy(pos);
+    sprite.scale.setScalar(scale);
+    this.scene.add(sprite);
+
+    this.particles.push({ sprite, mat, vx, vy, vz, life, maxLife: life, startScale: scale, endScaleMulti, kind, rotSpeed });
   }
 
   // ── Enemy shooting AI ─────────────────────────────────────────
@@ -749,7 +1029,9 @@ export class CombatSystem {
     this.cooldowns.delete(enemy.uuid);
     this.shootIntervals.delete(enemy.uuid);
 
-    this.startDeathFall(enemy);
+    // ✅ Use managed falling instead of rAF-based tick
+    enemy.userData.isDead = true;
+    this.fallingEnemies.push({ obj: enemy, elapsed: 0 });
 
     this.notifications.show({
       type: 'kill',
@@ -763,517 +1045,159 @@ export class CombatSystem {
     }
   }
 
-  private startDeathFall(enemy: THREE.Object3D): void {
-    enemy.userData.isDead = true;
-    const FALL_DURATION = 2.0;
-    const FALL_SPEED = 8_000;
-    const SPIN_SPEED = 2.5;
-    let elapsed = 0;
-
-    const tick = (delta: number) => {
-      elapsed += delta;
-      enemy.position.y -= FALL_SPEED * delta;
-      enemy.rotation.z += SPIN_SPEED * delta;
-      enemy.rotation.x += SPIN_SPEED * 0.5 * delta;
-      enemy.scale.setScalar(Math.max(enemy.scale.x * (1 - 0.3 * delta), 0));
-      if (elapsed / FALL_DURATION >= 1) {
-        this.enemyManager.removeEnemy(enemy);
-      } else {
-        requestAnimationFrame(() => tick(1 / 60));
-      }
-    };
-    requestAnimationFrame(() => tick(1 / 60));
-  }
-
-  // ── ENHANCED EXPLOSION SYSTEM ─────────────────────────────────
+  // ── EXPLOSION — all particles pushed to managed pool ─────────
 
   private spawnExplosion(pos: THREE.Vector3): void {
-  const flashTexture = this.getOrCreateTexture('flash', () => this.createFlashTexture());
-  const smokeTexture = this.getOrCreateTexture('smoke', () => this.createSmokeTexture());
-  const debrisTexture = this.getOrCreateTexture('debris', () => this.createDebrisTexture());
+    const flashTex  = getFlashTexture();
+    const smokeTex  = getSmokeTexture();
+    const debrisTex = getDebrisTexture();
 
-  // 🔥 MAIN FLASH - ABSOLUTELY MASSIVE
-  const flashLayers = [
-    { color: 0xffffff, size: 2500, opacity: 1.0, life: 0.18, scaleMulti: 8.0 },    // Enormous white core
-    { color: 0xffcc88, size: 3800, opacity: 0.95, life: 0.25, scaleMulti: 9.0 },   // Gigantic orange
-    { color: 0xff8800, size: 5200, opacity: 0.85, life: 0.35, scaleMulti: 10.0 },  // Titan orange-red
-    { color: 0xff4400, size: 7000, opacity: 0.7, life: 0.48, scaleMulti: 11.0 },   // Colossal red
-    { color: 0xcc2200, size: 9000, opacity: 0.5, life: 0.65, scaleMulti: 12.0 },   // Monstrous dark red
-    { color: 0xaa1100, size: 12000, opacity: 0.3, life: 0.85, scaleMulti: 13.0 },  // Epic outer glow
-  ];
-
-  // Fire core with additive blending - SUPER MASSIVE
-  for (const layer of flashLayers) {
-    const mat = new THREE.SpriteMaterial({
-      map: flashTexture,
-      color: layer.color,
-      transparent: true,
-      opacity: layer.opacity,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    });
-
-    const sprite = new THREE.Sprite(mat);
-    sprite.position.copy(pos);
-    const startScale = layer.size * 0.35; // Even larger base scale
-    sprite.scale.setScalar(startScale);
-    this.scene.add(sprite);
-
-    let elapsed = 0;
-
-    const tick = () => {
-      elapsed += 0.016;
-      const t = Math.min(elapsed / layer.life, 1);
-
-      if (t >= 1) {
-        this.scene.remove(sprite);
-        mat.dispose();
-        return;
-      }
-
-      // Explosive expansion
-      const scaleMulti = 1 + t * (layer.scaleMulti - 1);
-      sprite.scale.setScalar(startScale * scaleMulti);
-      
-      // Quick opacity drop but visible longer
-      mat.opacity = layer.opacity * (1 - Math.pow(t, 1.5));
-      
-      // Dramatic upward movement
-      sprite.position.y += 45 * (1 - t);
-
-      requestAnimationFrame(tick);
-    };
-
-    requestAnimationFrame(tick);
-  }
-
-  // 💨 SMOKE - COLOSSAL CLOUDS
-  const smokeLayers = [
-    { color: 0x2a1a0a, size: 4000, opacity: 0.65, life: 1.5, riseSpeed: 6.0, drift: 2.5, count: 5 },
-    { color: 0x4a3a2a, size: 6000, opacity: 0.55, life: 2.0, riseSpeed: 5.0, drift: 2.0, count: 5 },
-    { color: 0x6a5a4a, size: 8500, opacity: 0.45, life: 2.6, riseSpeed: 4.0, drift: 1.5, count: 5 },
-    { color: 0x8a7a6a, size: 11000, opacity: 0.35, life: 3.2, riseSpeed: 3.0, drift: 1.2, count: 5 },
-    { color: 0xaa9a8a, size: 14000, opacity: 0.25, life: 4.0, riseSpeed: 2.0, drift: 0.8, count: 4 },
-  ];
-
-  for (const layer of smokeLayers) {
-    for (let s = 0; s < layer.count; s++) {
-      const mat = new THREE.SpriteMaterial({
-        map: smokeTexture,
-        color: layer.color,
-        transparent: true,
-        opacity: layer.opacity,
-        blending: THREE.NormalBlending,
-        depthWrite: false,
-      });
-
-      const angle = Math.random() * Math.PI * 2;
-      const radius = (Math.random() - 0.5) * 1200; // Massive spread
-      const offsetX = Math.cos(angle) * radius;
-      const offsetZ = Math.sin(angle) * radius;
-      
-      const sprite = new THREE.Sprite(mat);
-      sprite.position.copy(pos.clone().add(new THREE.Vector3(offsetX, Math.random() * 300, offsetZ)));
-      sprite.scale.setScalar(layer.size * 0.15 * (0.5 + Math.random() * 1.0));
-      this.scene.add(sprite);
-
-      let elapsed = 0;
-      const driftX = (Math.random() - 0.5) * layer.drift * 2.0;
-      const driftZ = (Math.random() - 0.5) * layer.drift * 2.0;
-      const rotationSpeed = (Math.random() - 0.5) * 0.12;
-
-      const tick = () => {
-        elapsed += 0.016;
-        const t = Math.min(elapsed / layer.life, 1);
-
-        if (t >= 1) {
-          this.scene.remove(sprite);
-          mat.dispose();
-          return;
-        }
-
-        // Massive expansion
-        const scaleFactor = 0.2 + t * 3.5;
-        sprite.scale.setScalar(layer.size * 0.15 * scaleFactor);
-        
-        // Fast rising mushroom cloud
-        sprite.position.y += layer.riseSpeed * (1 - t * 0.4);
-        sprite.position.x += driftX * (0.2 + t);
-        sprite.position.z += driftZ * (0.2 + t);
-        
-        // Heavy turbulence
-        sprite.position.x += Math.sin(elapsed * 5) * 2.5;
-        sprite.position.z += Math.cos(elapsed * 4) * 2.5;
-        
-        sprite.material.rotation += rotationSpeed;
-        mat.opacity = layer.opacity * (1 - Math.pow(t, 1.4));
-
-        requestAnimationFrame(tick);
-      };
-
-      requestAnimationFrame(tick);
-    }
-  }
-
-  // 🔥 FIREBALL PARTICLES - EPIC AMOUNT
-  const fireParticleCount = 180; // Massive increase
-  for (let i = 0; i < fireParticleCount; i++) {
-    const mat = new THREE.SpriteMaterial({
-      map: flashTexture,
-      color: i < fireParticleCount * 0.5 ? 0xffaa44 : 0xff4422,
-      transparent: true,
-      opacity: 0.95,
-      blending: THREE.AdditiveBlending,
-    });
-
-    const sprite = new THREE.Sprite(mat);
-    sprite.position.copy(pos);
-    
-    const angle = Math.random() * Math.PI * 2;
-    const elevation = Math.random() * Math.PI - Math.PI / 2;
-    const speed = 180 + Math.random() * 220; // Extremely fast
-    const vel = new THREE.Vector3(
-      Math.cos(angle) * Math.cos(elevation) * speed,
-      Math.sin(elevation) * speed + 120,
-      Math.sin(angle) * Math.cos(elevation) * speed
-    );
-    
-    // Massive particles
-    sprite.scale.setScalar(25 + Math.random() * 45);
-    this.scene.add(sprite);
-
-    let life = 0;
-    const maxLife = 0.6 + Math.random() * 0.4;
-
-    const tick = () => {
-      life += 0.016;
-      const t = life / maxLife;
-
-      if (t >= 1) {
-        this.scene.remove(sprite);
-        mat.dispose();
-        return;
-      }
-
-      sprite.position.addScaledVector(vel, 0.016);
-      vel.y -= 25; // Strong gravity
-      
-      // Air resistance
-      vel.multiplyScalar(0.96);
-      
-      const scaleFactor = 1 - t * 0.25;
-      sprite.scale.setScalar((25 + Math.random() * 45) * scaleFactor);
-      mat.opacity = 0.95 * (1 - Math.pow(t, 1.6));
-
-      requestAnimationFrame(tick);
-    };
-
-    requestAnimationFrame(tick);
-  }
-
-  // 💥 SHOCKWAVE RINGS - MULTIPLE MASSIVE RINGS
-  const ringCount = 3;
-  for (let r = 0; r < ringCount; r++) {
-    const ringGeo = new THREE.RingGeometry(30 + r * 20, 80 + r * 30, 64);
-    const ringMat = new THREE.MeshBasicMaterial({
-      color: r === 0 ? 0xffaa66 : (r === 1 ? 0xff8844 : 0xff6622),
-      transparent: true,
-      opacity: 0.85 - r * 0.15,
-      side: THREE.DoubleSide,
-      blending: THREE.AdditiveBlending,
-    });
-    
-    const ring = new THREE.Mesh(ringGeo, ringMat);
-    ring.position.copy(pos);
-    ring.position.y += 40 + r * 15;
-    ring.lookAt(0, 1, 0);
-    this.scene.add(ring);
-    
-    let ringLife = 0;
-    const ringDelay = r * 0.05;
-    let started = false;
-    
-    const ringTick = () => {
-      if (!started) {
-        ringLife += 0.016;
-        if (ringLife >= ringDelay) {
-          started = true;
-          ringLife = 0;
-        } else {
-          requestAnimationFrame(ringTick);
-          return;
-        }
-      }
-      
-      ringLife += 0.016;
-      const t = ringLife / (0.4 + r * 0.1);
-      
-      if (t >= 1) {
-        this.scene.remove(ring);
-        ringGeo.dispose();
-        ringMat.dispose();
-        return;
-      }
-      
-      // Massive expansion
-      const scale = 1 + t * 20;
-      ring.scale.setScalar(scale);
-      ringMat.opacity = (0.85 - r * 0.15) * (1 - Math.pow(t, 1.4));
-      
-      requestAnimationFrame(ringTick);
-    };
-    requestAnimationFrame(ringTick);
-  }
-
-  // 💨 DEBRIS PARTICLES - MASSIVE AMOUNT
-  const debrisCount = 120; // Huge increase
-  for (let i = 0; i < debrisCount; i++) {
-    const mat = new THREE.SpriteMaterial({
-      map: debrisTexture,
-      color: 0xccaa88,
-      transparent: true,
-      opacity: 0.9,
-    });
-
-    const sprite = new THREE.Sprite(mat);
-    sprite.position.copy(pos);
-    
-    const angle = Math.random() * Math.PI * 2;
-    const elevation = Math.random() * Math.PI - Math.PI / 2;
-    const speed = 100 + Math.random() * 180;
-    const vel = new THREE.Vector3(
-      Math.cos(angle) * Math.cos(elevation) * speed,
-      Math.sin(elevation) * speed + 80,
-      Math.sin(angle) * Math.cos(elevation) * speed
-    );
-    
-    // Large debris chunks
-    sprite.scale.setScalar(12 + Math.random() * 28);
-    this.scene.add(sprite);
-
-    let life = 0;
-    const maxLife = 1.2 + Math.random() * 1.0;
-    let rotation = Math.random() * Math.PI * 2;
-    const rotSpeed = (Math.random() - 0.5) * 0.6;
-
-    const tick = () => {
-      life += 0.016;
-      const t = life / maxLife;
-
-      if (t >= 1) {
-        this.scene.remove(sprite);
-        mat.dispose();
-        return;
-      }
-
-      sprite.position.addScaledVector(vel, 0.016);
-      vel.y -= 28;
-      vel.multiplyScalar(0.97);
-      
-      rotation += rotSpeed;
-      sprite.material.rotation = rotation;
-      
-      const scaleFactor = 1 - t * 0.5;
-      sprite.scale.setScalar((12 + Math.random() * 28) * scaleFactor);
-      mat.opacity = 0.9 * (1 - t);
-
-      requestAnimationFrame(tick);
-    };
-
-    requestAnimationFrame(tick);
-  }
-
-  // 🌟 EXTREME SCREEN SHAKE - CAMERA VIOLENCE
-  if (this.camera) {
-    const originalPos = this.camera.position.clone();
-    let shakeTime = 0;
-    const shakeDuration = 0.6;
-    
-    const shakeTick = () => {
-      shakeTime += 0.016;
-      const t = shakeTime / shakeDuration;
-      
-      if (t >= 1) {
-        this.camera.position.copy(originalPos);
-        return;
-      }
-      
-      // Violent shaking
-      const intensity = (1 - t) * 35;
-      this.camera.position.x = originalPos.x + (Math.random() - 0.5) * intensity;
-      this.camera.position.y = originalPos.y + (Math.random() - 0.5) * intensity * 1.2;
-      this.camera.position.z = originalPos.z + (Math.random() - 0.5) * intensity * 0.7;
-      
-      requestAnimationFrame(shakeTick);
-    };
-    
-    requestAnimationFrame(shakeTick);
-  }
-
-  // 💥 NUCLEAR FLASH - FULL SCREEN WHITE OUT (brief)
-  const whiteOverlay = document.createElement('div');
-  whiteOverlay.style.position = 'fixed';
-  whiteOverlay.style.top = '0';
-  whiteOverlay.style.left = '0';
-  whiteOverlay.style.width = '100%';
-  whiteOverlay.style.height = '100%';
-  whiteOverlay.style.backgroundColor = 'white';
-  whiteOverlay.style.pointerEvents = 'none';
-  whiteOverlay.style.zIndex = '99999';
-  whiteOverlay.style.opacity = '0';
-  whiteOverlay.style.transition = 'opacity 0.05s ease-out';
-  document.body.appendChild(whiteOverlay);
-  
-  // Flash white
-  setTimeout(() => {
-    whiteOverlay.style.opacity = '0.85';
-    setTimeout(() => {
-      whiteOverlay.style.opacity = '0';
-      setTimeout(() => {
-        document.body.removeChild(whiteOverlay);
-      }, 150);
-    }, 60);
-  }, 0);
-
-  // 🌋 MUSHROOM CLOUD STEM (rising column of fire)
-  const stemCount = 30;
-  for (let i = 0; i < stemCount; i++) {
-    const mat = new THREE.SpriteMaterial({
-      map: flashTexture,
-      color: 0xff6644,
-      transparent: true,
-      opacity: 0.7,
-      blending: THREE.AdditiveBlending,
-    });
-
-    const sprite = new THREE.Sprite(mat);
-    const angle = Math.random() * Math.PI * 2;
-    const radius = (Math.random() - 0.5) * 600;
-    sprite.position.copy(pos.clone().add(new THREE.Vector3(
-      Math.cos(angle) * radius,
-      Math.random() * 200,
-      Math.sin(angle) * radius
-    )));
-    sprite.scale.setScalar(80 + Math.random() * 120);
-    this.scene.add(sprite);
-
-    let elapsed = 0;
-    const life = 0.8;
-    const riseSpeed = 45 + Math.random() * 35;
-
-    const tick = () => {
-      elapsed += 0.016;
-      const t = elapsed / life;
-
-      if (t >= 1) {
-        this.scene.remove(sprite);
-        mat.dispose();
-        return;
-      }
-
-      sprite.position.y += riseSpeed * (1 - t * 0.5);
-      sprite.scale.setScalar((80 + Math.random() * 120) * (1 + t * 0.8));
-      mat.opacity = 0.7 * (1 - Math.pow(t, 1.3));
-
-      requestAnimationFrame(tick);
-    };
-
-    requestAnimationFrame(tick);
-  }
-}
-
-  // ── TEXTURE GENERATION HELPERS ─────────────────────────────────
-
-  private getOrCreateTexture(key: string, creator: () => THREE.CanvasTexture): THREE.CanvasTexture {
-    if (!this.cachedTextures.has(key)) {
-      this.cachedTextures.set(key, creator());
-    }
-    return this.cachedTextures.get(key)!;
-  }
-
-  private createFlashTexture(): THREE.CanvasTexture {
-    const canvas = document.createElement('canvas');
-    canvas.width = 64;
-    canvas.height = 64;
-    const ctx = canvas.getContext('2d')!;
-
-    ctx.clearRect(0, 0, 64, 64);
-
-    const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-    gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
-    gradient.addColorStop(0.3, 'rgba(255, 200, 100, 0.9)');
-    gradient.addColorStop(0.6, 'rgba(255, 100, 0, 0.6)');
-    gradient.addColorStop(0.8, 'rgba(255, 50, 0, 0.2)');
-    gradient.addColorStop(1, 'rgba(255, 0, 0, 0)');
-
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, 64, 64);
-
-    for (let i = 0; i < 200; i++) {
-      const x = Math.random() * 64;
-      const y = Math.random() * 64;
-      const alpha = Math.random() * 0.3;
-      const dist = Math.hypot(x - 32, y - 32);
-      if (dist < 32) {
-        ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
-        ctx.fillRect(x, y, 2, 2);
-      }
-    }
-
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.needsUpdate = true;
-    return texture;
-  }
-
-  private createSmokeTexture(): THREE.CanvasTexture {
-    const canvas = document.createElement('canvas');
-    canvas.width = 128;
-    canvas.height = 128;
-    const ctx = canvas.getContext('2d')!;
-
-    ctx.clearRect(0, 0, 128, 128);
-
-    for (let i = 0; i < 8; i++) {
-      const offsetX = (Math.random() - 0.5) * 40;
-      const offsetY = (Math.random() - 0.5) * 40;
-      const radius = 30 + Math.random() * 25;
-
-      const gradient = ctx.createRadialGradient(
-        64 + offsetX, 64 + offsetY, 0,
-        64 + offsetX, 64 + offsetY, radius
+    // ── Flash layers
+    const flashColors = [0xffffff, 0xffcc88, 0xff8800, 0xff4400, 0xcc2200];
+    const flashSizes  = [800, 1200, 1800, 2400, 3200];
+    const flashLives  = [0.18, 0.25, 0.35, 0.48, 0.65];
+    const count = Math.min(this.FLASH_COUNT, flashColors.length);
+    for (let i = 0; i < count; i++) {
+      this.addParticle(
+        'flash', flashTex, flashColors[i], 1.0,
+        THREE.AdditiveBlending,
+        pos.clone().add(new THREE.Vector3(0, i * 12, 0)),
+        flashSizes[i] * 0.12,
+        8 + i * 1.5,
+        flashLives[i],
+        0, 40 * (1 - i * 0.1), 0,
       );
-      gradient.addColorStop(0, `rgba(100, 100, 100, ${0.3 + Math.random() * 0.2})`);
-      gradient.addColorStop(0.5, `rgba(80, 80, 80, ${0.15 + Math.random() * 0.1})`);
-      gradient.addColorStop(1, 'rgba(60, 60, 60, 0)');
-
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, 128, 128);
     }
 
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.needsUpdate = true;
-    return texture;
-  }
+    // ── Fire particles
+    for (let i = 0; i < this.FIRE_COUNT; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const elev  = Math.random() * Math.PI - Math.PI / 2;
+      const spd   = 150 + Math.random() * 200;
+      this.addParticle(
+        'fire', flashTex,
+        i < this.FIRE_COUNT * 0.5 ? 0xffaa44 : 0xff4422,
+        0.95, THREE.AdditiveBlending,
+        pos.clone(),
+        20 + Math.random() * 40,
+        0.6,
+        0.5 + Math.random() * 0.4,
+        Math.cos(angle) * Math.cos(elev) * spd,
+        Math.sin(elev) * spd + 100,
+        Math.sin(angle) * Math.cos(elev) * spd,
+      );
+    }
 
-  private createDebrisTexture(): THREE.CanvasTexture {
-    const canvas = document.createElement('canvas');
-    canvas.width = 16;
-    canvas.height = 16;
-    const ctx = canvas.getContext('2d')!;
+    // ── Smoke layers
+    for (let i = 0; i < this.SMOKE_COUNT; i++) {
+      const angle  = Math.random() * Math.PI * 2;
+      const radius = (Math.random() - 0.5) * 800;
+      const smokePos = pos.clone().add(new THREE.Vector3(
+        Math.cos(angle) * radius,
+        Math.random() * 200,
+        Math.sin(angle) * radius,
+      ));
+      const smokeSize  = 600 + Math.random() * 1400;
+      const smokeLife  = 1.2 + Math.random() * 2.0;
+      this.addParticle(
+        'smoke', smokeTex,
+        0x3a2a1a, 0.55,
+        THREE.NormalBlending,
+        smokePos,
+        smokeSize * 0.08,
+        4.0,
+        smokeLife,
+        (Math.random() - 0.5) * 20,
+        30 + Math.random() * 40,
+        (Math.random() - 0.5) * 20,
+        (Math.random() - 0.5) * 0.1,
+      );
+    }
 
-    ctx.clearRect(0, 0, 16, 16);
+    // ── Debris
+    for (let i = 0; i < this.DEBRIS_COUNT; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const elev  = Math.random() * Math.PI - Math.PI / 2;
+      const spd   = 80 + Math.random() * 150;
+      this.addParticle(
+        'debris', debrisTex, 0xccaa88, 0.9,
+        THREE.NormalBlending,
+        pos.clone(),
+        10 + Math.random() * 22,
+        0.4,
+        1.0 + Math.random() * 1.0,
+        Math.cos(angle) * Math.cos(elev) * spd,
+        Math.sin(elev) * spd + 60,
+        Math.sin(angle) * Math.cos(elev) * spd,
+        (Math.random() - 0.5) * 0.5,
+      );
+    }
 
-    ctx.fillStyle = 'rgba(80, 60, 40, 0.9)';
-    ctx.fillRect(4, 4, 8, 3);
-    ctx.fillRect(6, 7, 5, 4);
-    ctx.fillRect(3, 10, 7, 3);
+    // ── Stem (mushroom column)
+    for (let i = 0; i < this.STEM_COUNT; i++) {
+      const angle  = Math.random() * Math.PI * 2;
+      const radius = (Math.random() - 0.5) * 500;
+      this.addParticle(
+        'stem', flashTex, 0xff6644, 0.7,
+        THREE.AdditiveBlending,
+        pos.clone().add(new THREE.Vector3(
+          Math.cos(angle) * radius, Math.random() * 150, Math.sin(angle) * radius,
+        )),
+        80 + Math.random() * 100,
+        2.0,
+        0.7 + Math.random() * 0.3,
+        (Math.random() - 0.5) * 10,
+        40 + Math.random() * 30,
+        (Math.random() - 0.5) * 10,
+      );
+    }
 
-    ctx.fillStyle = 'rgba(120, 80, 50, 0.7)';
-    ctx.fillRect(5, 5, 4, 2);
+    // ── Shockwave rings (pushed to managed list, not rAF)
+    if (!this.isMobile) {
+      for (let r = 0; r < 3; r++) {
+        const geo = new THREE.RingGeometry(30 + r * 20, 80 + r * 30, 48);
+        const mat = new THREE.MeshBasicMaterial({
+          color: r === 0 ? 0xffaa66 : r === 1 ? 0xff8844 : 0xff6622,
+          transparent: true,
+          opacity: 0.75 - r * 0.15,
+          side: THREE.DoubleSide,
+          blending: THREE.AdditiveBlending,
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.copy(pos);
+        mesh.position.y += 40 + r * 15;
+        mesh.lookAt(pos.x, pos.y + 1, pos.z);
+        this.scene.add(mesh);
+        const life = 0.4 + r * 0.1;
+        this.shockwaveRings.push({ mesh, geo, mat, life, maxLife: life, startY: mesh.position.y });
+      }
+    }
 
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.needsUpdate = true;
-    return texture;
+    // ── White flash overlay (DOM) — only on desktop, single element, no leak
+    if (!this.isMobile) {
+      const whiteOverlay = document.createElement('div');
+      Object.assign(whiteOverlay.style, {
+        position:        'fixed',
+        inset:           '0',
+        backgroundColor: 'white',
+        pointerEvents:   'none',
+        zIndex:          '99999',
+        opacity:         '0',
+        transition:      'opacity 0.05s ease-out',
+      });
+      document.body.appendChild(whiteOverlay);
+
+      // Animate with setTimeout — short-lived, no rAF leak
+      setTimeout(() => { whiteOverlay.style.opacity = '0.7'; }, 0);
+      setTimeout(() => { whiteOverlay.style.opacity = '0'; },   60);
+      setTimeout(() => { whiteOverlay.remove(); },               220);
+    }
+
+    // ── Screen shake — delegate entirely to HealthSystem shaker
+    // (HealthSystem.update already runs every frame via this.health.update)
+    // Just bump the shakeTimer for the explosion magnitude
+    this.health.shakeTimer    = Math.max(this.health.shakeTimer, 0.5);
+    this.health.shakeIntensity = Math.max(this.health.shakeIntensity, 0.0004);
   }
 
   // ── Helpers ───────────────────────────────────────────────────
