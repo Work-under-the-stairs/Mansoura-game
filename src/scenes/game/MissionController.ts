@@ -126,7 +126,7 @@ export class MissionController {
     }
     else if (this.state === MissionState.MANSOURA_BATTLE) {
       this.enemyKilledCount++;
-      if (this.enemyKilledCount < 6) {
+      if (this.enemyKilledCount < 3) { //was 6
         this.later(() => this.spawnWave(1), 2000);
       } else {
         this.later(() => this.victory(), 3000);
@@ -141,45 +141,7 @@ export class MissionController {
     }
   }
 
-  // private showDecision(title: string, text: string, onSelect: (count: number) => void) {
-  //   // Remove any existing card first (safety)
-  //   document.getElementById('decision-card')?.remove();
 
-  //   const card = document.createElement('div');
-  //   card.id = 'decision-card';
-  //   card.style.cssText = `
-  //     position: fixed; top: 120px; right: 12px;
-  //     width: 280px; background: rgba(15, 15, 25, 0.95);
-  //     border-left: 3px solid #378ADD; border-radius: 12px;
-  //     padding: 16px; color: white; font-family: sans-serif;
-  //     z-index: 100000; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-  //     backdrop-filter: blur(10px); animation: slideIn 0.4s ease-out;
-  //     direction: rtl;
-  //   `;
-
-  //   card.innerHTML = `
-  //     <style>
-  //       @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-  //       .decision-btn {
-  //         margin-top: 12px; padding: 6px 15px; background: #378ADD;
-  //         border: none; color: white; border-radius: 4px; cursor: pointer;
-  //         font-weight: bold; font-size: 11px; transition: 0.2s;
-  //       }
-  //       .decision-btn:hover { background: #4ca1f5; }
-  //     </style>
-  //     <div style="font-weight: bold; color: #85B7EB; font-size: 13px; margin-bottom: 5px;">${title}</div>
-  //     <div style="font-size: 11px; color: #aab2c5; line-height: 1.5;">${text}</div>
-  //     <div style="display: flex; gap: 10px;">
-  //       <button class="decision-btn" id="opt-1">طائرة واحدة</button>
-  //       <button class="decision-btn" id="opt-2">طائرتان</button>
-  //     </div>
-  //   `;
-
-  //   document.body.appendChild(card);
-
-  //   card.querySelector('#opt-1')?.addEventListener('click', () => { card.remove(); onSelect(1); });
-  //   card.querySelector('#opt-2')?.addEventListener('click', () => { card.remove(); onSelect(2); });
-  // }
   private showDecision(title: string, text: string, onSelect: (count: number) => void) {
     // 1. إزالة أي بطاقة قرار قديمة
     document.getElementById('decision-card')?.remove();
