@@ -1,71 +1,137 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader';
+import { Cockpit } from './Cockpit';
 
 export class TransitionPlane {
     public model: THREE.Group | null = null;
-    private readonly isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
+
+    private readonly isMobile =
+        /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+        navigator.maxTouchPoints > 1;
+
+    // Position in cockpit's LOCAL space — child of cockpit so it always follows
+    // SIDE: right of cockpit, same height, slightly behind → always in view
+    private readonly sideLocalPos  = new THREE.Vector3(1500, 0, 500);
+    private readonly frontLocalPos = new THREE.Vector3(0, 0, -2000);
+
+    private pendingAppear = false;
+    private pendingMoveToSide = false;
 
     constructor(
-        private scene: THREE.Scene,
-        private loadingManager: THREE.LoadingManager,
-        private cockpitModel: THREE.Group // Reference to the cockpit to follow
+        private readonly scene: THREE.Scene,
+        private readonly loadingManager: THREE.LoadingManager,
+        private readonly cockpit: Cockpit
     ) {
         this.loadModel();
     }
 
     private loadModel(): void {
-        const loader = new GLTFLoader(this.loadingManager);
-        const dracoLoader = new DRACOLoader(this.loadingManager);
-        dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
-        loader.setDRACOLoader(dracoLoader);
+        // Use a fresh independent loader — the shared loadingManager is already
+        // "done" by the time Level 2 starts, so its callbacks never fire.
+        const loader = new GLTFLoader();
+        const draco  = new DRACOLoader();
+        draco.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
+        loader.setDRACOLoader(draco);
 
-        // Using the same model as the cockpit for the transition plane as requested
-        loader.load('/models/cockpitshit34.glb', (gltf) => {
+        loader.load('/models/plane.glb', (gltf) => {
             this.model = gltf.scene;
-            this.scene.add(this.model);
+            this.model.scale.setScalar(0.75);
 
             this.model.traverse((child) => {
-                if ((child as THREE.Mesh).isMesh) {
-                    const mesh = child as THREE.Mesh;
-                    if (!this.isMobile) {
-                        mesh.castShadow = true;
-                        mesh.receiveShadow = true;
-                    }
-                    if (mesh.material instanceof THREE.MeshStandardMaterial) {
-                        mesh.material.roughness = 0.6;
-                    }
+                const mesh = child as THREE.Mesh;
+                if (!mesh.isMesh) return;
+                if (!this.isMobile) {
+                    mesh.castShadow    = true;
+                    mesh.receiveShadow = true;
                 }
             });
 
-            console.log('Transition Plane Loaded!');
-        },
-        (progress) => {
-            console.log(`Transition Plane Loading: ${(progress.loaded / progress.total * 100).toFixed(2)}%`);
-        },
-        (error) => {
-            console.error('Error loading transition plane:', error);
+            // ── KEY CHANGE: add as CHILD of cockpit model ──────────────────
+            // This means the wingman inherits all cockpit transforms for free.
+            // No matrix math needed — just set local position.
+            const cockpitModel = this.cockpit.model;
+            if (cockpitModel) {
+                cockpitModel.add(this.model);
+            } else {
+                // Cockpit model not ready yet — add to scene and reattach later
+                this.scene.add(this.model);
+            }
+
+            // Start hidden at side position
+            this.model.position.copy(this.sideLocalPos);
+            this.model.visible = false;
+
+            console.log('[TransitionPlane] Loaded and attached to cockpit.');
+
+            if (this.pendingAppear) {
+                this.pendingAppear = false;
+                this.appearInFront();
+            }
+        }, undefined, (err) => {
+            console.error('[TransitionPlane] Load error:', err);
         });
     }
 
-    /**
-     * Updates the transition plane's position and rotation to fly next to the cockpit.
-     * It mirrors the cockpit's transformation with a fixed offset.
-     */
-    public update(): void {
-        if (!this.model || !this.cockpitModel) return;
+    /** Snap to front of cockpit and show */
+    public appearInFront(): void {
+        if (!this.model) {
+            this.pendingAppear = true;
+            console.warn('[TransitionPlane] appearInFront — model not ready, deferred.');
+            return;
+        }
 
-        // Define the offset (e.g., 15 units to the right and slightly behind/above)
-        // Adjust these values to position the plane exactly where you want it relative to the cockpit
-        const offset = new THREE.Vector3(15, 2, -5);
-        
-        // Apply the cockpit's world matrix to the offset to get the target world position
-        const targetPosition = offset.clone().applyMatrix4(this.cockpitModel.matrixWorld);
-        
-        // Update position
-        this.model.position.copy(targetPosition);
-        
-        // Match the cockpit's rotation
-        this.model.quaternion.copy(this.cockpitModel.quaternion);
+        // Re-attach to cockpit if it wasn't ready during load
+        const cockpitModel = this.cockpit.model;
+        if (cockpitModel && this.model.parent !== cockpitModel) {
+            this.scene.remove(this.model);
+            cockpitModel.add(this.model);
+        }
+
+        this.model.position.copy(this.frontLocalPos);
+        this.model.rotation.set(0, 0, 0);
+        this.model.visible = true;
+        console.log('[TransitionPlane] Visible — in front of cockpit.');
+    }
+
+    /** Instantly move to right-side formation position */
+    public moveToSide(): void {
+        if (!this.model) {
+            this.pendingMoveToSide = true;
+            return;
+        }
+        this.model.position.copy(this.sideLocalPos);
+        console.log('[TransitionPlane] Moved to side formation.');
+    }
+
+    /** Snap back and hide (called on replay reset) */
+    public snapToCockpit(): void {
+        if (!this.model) return;
+        this.model.position.copy(this.sideLocalPos);
+    }
+
+    /** Hide and reset */
+    public reset(): void {
+        this.pendingAppear     = false;
+        this.pendingMoveToSide = false;
+        if (this.model) {
+            this.model.visible = false;
+            this.model.position.copy(this.sideLocalPos);
+        }
+    }
+
+    /** Engine calls this every frame — no-op now since model is a cockpit child */
+    public update(): void {
+        // Nothing needed — child inherits parent transform automatically
+    }
+
+    public dispose(): void {
+        if (!this.model) return;
+        if (this.model.parent) {
+            this.model.parent.remove(this.model);
+        } else {
+            this.scene.remove(this.model);
+        }
+        this.model = null;
     }
 }

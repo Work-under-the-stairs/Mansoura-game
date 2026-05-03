@@ -235,14 +235,5 @@ export class Cockpit {
             this.weaponSystem.setCockpitSpeed(this.currentSpeed);
             this.weaponSystem.update(delta);
         }
-        
-        // 4. تحديث الـ World بمكان الكوكبيت والـ Yaw
-        // هاتي الـ worldPosition بدون إنشاء object جديد
-        this.model.getWorldPosition(this._worldPos);
-
-        // نبعت البيانات للـ world (تأكدي إن الـ world متاح عندك في الكلاس)
-        if (this.world) {
-            this.world.update(delta, this._worldPos, this.angles.yaw);
-        }
     }
 }
