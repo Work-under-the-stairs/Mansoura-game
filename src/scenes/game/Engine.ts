@@ -205,9 +205,10 @@ export class Engine {
    *    - Mission state → START
    *    - All enemies cleared
    *    - All projectiles cleared
-   *    - All managed particles cleared (via combatSystem.reset())
    *    - Cockpit position/rotation → initial
    *    - HUD refreshed
+   *
+   * Call this instead of destroy() + new Engine() when the player clicks Replay.
    */
   public resetForReplay(): void {
     console.log('[Engine] Resetting for replay...');
@@ -225,6 +226,7 @@ export class Engine {
     // 3. Clear all in-flight projectiles
     if (this.projectileManager) {
       (this.projectileManager as any).clearAll?.();
+      // Brute-force clear projectile meshes from scene
       const projs = (this.projectileManager as any).projectiles as Array<{mesh: any, alive: boolean}> | undefined;
       if (projs) {
         for (const p of projs) { this.scene.remove(p.mesh); p.alive = false; }
@@ -232,9 +234,7 @@ export class Engine {
       }
     }
 
-    // 4. Reset health + combat system
-    //    ✅ combatSystem.reset() also clears all managed particles,
-    //       falling enemies, and shockwave rings — no rAF leak risk on replay
+    // 4. Reset health + combat system (hides death screen, resets HP bar to 100)
     if (this.combatSystem) {
       this.combatSystem.reset();
     }
@@ -248,7 +248,7 @@ export class Engine {
       (this.cockpit as any).currentSpeed = (this.cockpit as any).config.minSpeed;
     }
 
-    // 6. Restart mission — levelStarted=0 lets animate() call start() next frame
+    // 6. Restart mission — levelStarted=false lets animate() call start() next frame
     this.levelStarted = 0;
     console.log('[Engine] Reset complete — mission restarting.');
   }
@@ -265,6 +265,7 @@ export class Engine {
     sunLight.position.set(-9000, 8500, -5000);
     sunLight.castShadow = !this.isMobile;
 
+    // ✅ Shadow map: 1024 على desktop (كان 2048) — نفس الكواليتي تقريباً، نص حساب GPU
     sunLight.shadow.mapSize.set(
       this.isMobile ? 512 : 1024,
       this.isMobile ? 512 : 1024,
@@ -275,12 +276,14 @@ export class Engine {
     sunLight.shadow.camera.bottom = -20000;
     sunLight.shadow.camera.far    =  50000;
 
+    // ✅ الـ sun ثابت مش بيتحرك — نوقف تحديث الـ matrix تلقائياً
     sunLight.matrixAutoUpdate = false;
     sunLight.updateMatrix();
 
     this.scene.add(sunLight);
 
     const hemi = new THREE.HemisphereLight(0xe7f3ff, 0x97886a, 1.0);
+    // ✅ الـ hemi ثابت كمان
     hemi.matrixAutoUpdate = false;
     hemi.updateMatrix();
     this.scene.add(hemi);
@@ -306,6 +309,7 @@ export class Engine {
       //    that creates a new Engine in main.ts which crashes (loadingScene is gone)
       hs.onRestartCallback = () => {
         this.resetForReplay();
+        // Do NOT call options.onRestart?.() here — it would rebuild the Engine
       };
 
       hs.onExitCallback = () => {
@@ -336,20 +340,11 @@ export class Engine {
     this.clock.update();
     const delta = this.clock.getDelta();
 
-    // ✅ Clamp delta to prevent spiral-of-death on tab focus restore
-    // (e.g. tab was hidden for 10 seconds → delta = 10 → physics explode)
-    const clampedDelta = Math.min(delta, 0.05);
-
-    if (this.cockpit) this.cockpit.update(clampedDelta);
-    if (this.world)   this.world.update(clampedDelta, this.cockpit.model?.position, this.cockpit.model ?? undefined);
-    if (this.enemies) this.enemies.update(clampedDelta);
-    this.projectileManager.update(clampedDelta);
-
-    // ✅ combatSystem.update now also drives:
-    //    - updateParticles()      — explosion sprites, no rAF
-    //    - updateShockwaveRings() — ring geometry, no rAF
-    //    - updateFallingEnemies() — death fall physics, no rAF
-    this.combatSystem.update(clampedDelta);
+    if (this.cockpit) this.cockpit.update(delta);
+    if (this.world)   this.world.update(delta, this.cockpit.model?.position, this.cockpit.model ?? undefined);
+    if (this.enemies) this.enemies.update(delta);
+    this.projectileManager.update(delta);
+    this.combatSystem.update(delta);
 
     this.renderer.render(this.scene, this.camera);
 
@@ -358,13 +353,15 @@ export class Engine {
       this.mobileOptimized = true;
     }
 
+    // ✅ levelStarted is reset by resetForReplay(), so mission auto-restarts
     if (!this.levelStarted && this.cockpit.model) {
       if (this.missionController) {
         this.missionController.start();
         this.levelStarted = 1;
       }
     }
-    if (this.levelStarted === 1 && this.missionController?.getMissionState()) {
+    if(this.levelStarted === 1 && this.missionController?.getMissionState()) {
+      // this.missionController.start();
       console.log("Mission state indicates victory, starting next level...");
       this.levelStarted = 2;
     }
