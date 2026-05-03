@@ -5,116 +5,133 @@ import { Cockpit } from './Cockpit';
 
 export class TransitionPlane {
     public model: THREE.Group | null = null;
+
     private readonly isMobile =
         /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
         navigator.maxTouchPoints > 1;
 
-    /**
-     * Offsets in the cockpit's LOCAL space.
-     * Front: Directly in front of the pilot's view.
-     * Side: Formation position to the right.
-     */
-    private readonly frontOffset = new THREE.Vector3(0, -200, -6000);
-    private readonly sideOffset  = new THREE.Vector3(2500, -100, -4000);
-    
-    private currentOffset = new THREE.Vector3().copy(this.frontOffset);
-    private readonly lerpAlpha = 0.04; // Smooth movement
+    // Position in cockpit's LOCAL space — child of cockpit so it always follows
+    // SIDE: right of cockpit, same height, slightly behind → always in view
+    private readonly sideLocalPos  = new THREE.Vector3(1500, 0, 500);
+    private readonly frontLocalPos = new THREE.Vector3(0, 0, -2000);
 
-    private readonly _mat        = new THREE.Matrix4();
-    private readonly _targetPos  = new THREE.Vector3();
-    private readonly _targetQuat = new THREE.Quaternion();
+    private pendingAppear = false;
+    private pendingMoveToSide = false;
 
     constructor(
-        private readonly scene:          THREE.Scene,
+        private readonly scene: THREE.Scene,
         private readonly loadingManager: THREE.LoadingManager,
-        private readonly cockpit:        Cockpit
+        private readonly cockpit: Cockpit
     ) {
         this.loadModel();
     }
 
-    private get cm(): THREE.Group | null {
-        return this.cockpit.model ?? null;
-    }
-
     private loadModel(): void {
-        const loader = new GLTFLoader(this.loadingManager);
-        const draco  = new DRACOLoader(this.loadingManager);
+        // Use a fresh independent loader — the shared loadingManager is already
+        // "done" by the time Level 2 starts, so its callbacks never fire.
+        const loader = new GLTFLoader();
+        const draco  = new DRACOLoader();
         draco.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
         loader.setDRACOLoader(draco);
 
-        loader.load(
-            '/models/plane.glb',
-            (gltf) => {
-                this.model = gltf.scene;
-                this.model.traverse((child) => {
-                    const mesh = child as THREE.Mesh;
-                    if (!mesh.isMesh) return;
-                    if (!this.isMobile) {
-                        mesh.castShadow    = true;
-                        mesh.receiveShadow = true;
-                    }
-                    if (mesh.material instanceof THREE.MeshStandardMaterial) {
-                        mesh.material.roughness = 0.6;
-                    }
-                });
+        loader.load('/models/plane.glb', (gltf) => {
+            this.model = gltf.scene;
+            this.model.scale.setScalar(0.75);
+
+            this.model.traverse((child) => {
+                const mesh = child as THREE.Mesh;
+                if (!mesh.isMesh) return;
+                if (!this.isMobile) {
+                    mesh.castShadow    = true;
+                    mesh.receiveShadow = true;
+                }
+            });
+
+            // ── KEY CHANGE: add as CHILD of cockpit model ──────────────────
+            // This means the wingman inherits all cockpit transforms for free.
+            // No matrix math needed — just set local position.
+            const cockpitModel = this.cockpit.model;
+            if (cockpitModel) {
+                cockpitModel.add(this.model);
+            } else {
+                // Cockpit model not ready yet — add to scene and reattach later
                 this.scene.add(this.model);
-                this.model.visible = false; // Hidden until Level 2 starts
-                this.snapToCockpit();
-            },
-            undefined,
-            (err) => console.error('[TransitionPlane] Load error:', err)
-        );
+            }
+
+            // Start hidden at side position
+            this.model.position.copy(this.sideLocalPos);
+            this.model.visible = false;
+
+            console.log('[TransitionPlane] Loaded and attached to cockpit.');
+
+            if (this.pendingAppear) {
+                this.pendingAppear = false;
+                this.appearInFront();
+            }
+        }, undefined, (err) => {
+            console.error('[TransitionPlane] Load error:', err);
+        });
     }
 
-    /** Set position to front and make visible */
+    /** Snap to front of cockpit and show */
     public appearInFront(): void {
-        this.currentOffset.copy(this.frontOffset);
-        if (this.model) {
-            this.model.visible = true;
-            this.snapToCockpit();
+        if (!this.model) {
+            this.pendingAppear = true;
+            console.warn('[TransitionPlane] appearInFront — model not ready, deferred.');
+            return;
         }
+
+        // Re-attach to cockpit if it wasn't ready during load
+        const cockpitModel = this.cockpit.model;
+        if (cockpitModel && this.model.parent !== cockpitModel) {
+            this.scene.remove(this.model);
+            cockpitModel.add(this.model);
+        }
+
+        this.model.position.copy(this.frontLocalPos);
+        this.model.rotation.set(0, 0, 0);
+        this.model.visible = true;
+        console.log('[TransitionPlane] Visible — in front of cockpit.');
     }
 
-    /** Start moving to the side position */
+    /** Instantly move to right-side formation position */
     public moveToSide(): void {
-        this.currentOffset.copy(this.sideOffset);
+        if (!this.model) {
+            this.pendingMoveToSide = true;
+            return;
+        }
+        this.model.position.copy(this.sideLocalPos);
+        console.log('[TransitionPlane] Moved to side formation.');
     }
 
-    /** Hide and reset for game restart */
+    /** Snap back and hide (called on replay reset) */
+    public snapToCockpit(): void {
+        if (!this.model) return;
+        this.model.position.copy(this.sideLocalPos);
+    }
+
+    /** Hide and reset */
     public reset(): void {
-        this.currentOffset.copy(this.frontOffset);
+        this.pendingAppear     = false;
+        this.pendingMoveToSide = false;
         if (this.model) {
             this.model.visible = false;
-            this.snapToCockpit();
+            this.model.position.copy(this.sideLocalPos);
         }
     }
 
-    public snapToCockpit(): void {
-        const cockpitModel = this.cm;
-        if (!this.model || !cockpitModel) return;
-        cockpitModel.updateWorldMatrix(true, false);
-        this._mat.copy(cockpitModel.matrixWorld);
-        this._targetPos.copy(this.currentOffset).applyMatrix4(this._mat);
-        this.model.position.copy(this._targetPos);
-        cockpitModel.getWorldQuaternion(this._targetQuat);
-        this.model.quaternion.copy(this._targetQuat);
-    }
-
+    /** Engine calls this every frame — no-op now since model is a cockpit child */
     public update(): void {
-        const cockpitModel = this.cm;
-        if (!this.model || !cockpitModel || !this.model.visible) return;
-
-        cockpitModel.updateWorldMatrix(true, false);
-        this._mat.copy(cockpitModel.matrixWorld);
-        this._targetPos.copy(this.currentOffset).applyMatrix4(this._mat);
-        this.model.position.lerp(this._targetPos, this.lerpAlpha);
-        cockpitModel.getWorldQuaternion(this._targetQuat);
-        this.model.quaternion.slerp(this._targetQuat, this.lerpAlpha);
+        // Nothing needed — child inherits parent transform automatically
     }
 
     public dispose(): void {
         if (!this.model) return;
-        this.scene.remove(this.model);
+        if (this.model.parent) {
+            this.model.parent.remove(this.model);
+        } else {
+            this.scene.remove(this.model);
+        }
         this.model = null;
     }
 }

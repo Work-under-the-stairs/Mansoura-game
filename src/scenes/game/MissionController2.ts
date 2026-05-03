@@ -63,33 +63,43 @@ export class MissionController2 {
    * 3. Plane moves to side.
    * 4. Wave 1 begins.
    */
+  /**
+   * Sequence for Level 2 Start:
+   * t=0s  → Notification message shown.
+   * t=1s  → Companion plane snaps in front, same height & direction as cockpit.
+   * t=6s  → Plane smoothly glides to side formation (stays locked to cockpit forever).
+   * t=6s  → Wave 1 enemies spawn.
+   */
   private runLevel2Transition() {
     console.log('[MissionController2] Running transition sequence');
-    
-    // 1. Show the specific message
+
+    // 1. Show the notification message first
     this.engine.notif.show({
       type: 'info',
       title: 'أوامر القيادة',
       msg: 'انتقل إلى سيناء لحماية الجنود وضباط الجيش',
-      duration: 6000
+      duration: 7000
     });
 
-    // 2. Plane appears in front
-    if (this.engine.transitionPlane) {
-        this.engine.transitionPlane.appearInFront();
-    }
-
-    // 3. Wait 2 seconds, then move plane to side and start wave 1
+    // 2. After 1s companion plane appears in front (instant snap, same heading/height)
     this.later(() => {
-        console.log('[MissionController2] 2 seconds passed. Moving plane and starting wave 1.');
+      console.log('[MissionController2] Companion plane appearing in front.');
+      if (this.engine.transitionPlane) {
+        this.engine.transitionPlane.appearInFront();
+      }
+
+      // 3. Hold 5 seconds in front, then slide to side formation
+      this.later(() => {
+        console.log('[MissionController2] Moving plane to side formation. Starting wave 1.');
         if (this.engine.transitionPlane) {
-            this.engine.transitionPlane.moveToSide();
+          this.engine.transitionPlane.moveToSide();
         }
-        
+
         // 4. Start Wave 1 combat
         this.state = MissionState.BATTLE_WAVE_1;
         this.runStateLogic();
-    }, 2000);
+      }, 5000);
+    }, 1000);
   }
 
   public getMissionState(): boolean {
