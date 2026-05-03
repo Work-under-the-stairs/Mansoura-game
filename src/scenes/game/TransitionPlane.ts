@@ -12,8 +12,8 @@ export class TransitionPlane {
 
     // Position in cockpit's LOCAL space — child of cockpit so it always follows
     // SIDE: right of cockpit, same height, slightly behind → always in view
-    private readonly sideLocalPos  = new THREE.Vector3(1500, 0, 500);
-    private readonly frontLocalPos = new THREE.Vector3(0, 0, -2000);
+    private readonly sideLocalPos  = new THREE.Vector3(-9, -2, 10);
+    private readonly frontLocalPos = new THREE.Vector3(0, 0, -10);
 
     private pendingAppear = false;
     private pendingMoveToSide = false;
@@ -74,25 +74,49 @@ export class TransitionPlane {
     }
 
     /** Snap to front of cockpit and show */
+    // public appearInFront(): void {
+    //     if (!this.model) {
+    //         this.pendingAppear = true;
+    //         console.warn('[TransitionPlane] appearInFront — model not ready, deferred.');
+    //         return;
+    //     }
+
+    //     // Re-attach to cockpit if it wasn't ready during load
+    //     const cockpitModel = this.cockpit.model;
+    //     if (cockpitModel && this.model.parent !== cockpitModel) {
+    //         this.scene.remove(this.model);
+    //         cockpitModel.add(this.model);
+    //     }
+
+    //     this.model.position.copy(this.frontLocalPos);
+    //     this.model.rotation.set(0, 0, 0);
+    //     this.model.visible = true;
+    //     console.log('[TransitionPlane] Visible — in front of cockpit.');
+    // }
     public appearInFront(): void {
-        if (!this.model) {
-            this.pendingAppear = true;
-            console.warn('[TransitionPlane] appearInFront — model not ready, deferred.');
-            return;
-        }
-
-        // Re-attach to cockpit if it wasn't ready during load
-        const cockpitModel = this.cockpit.model;
-        if (cockpitModel && this.model.parent !== cockpitModel) {
-            this.scene.remove(this.model);
-            cockpitModel.add(this.model);
-        }
-
-        this.model.position.copy(this.frontLocalPos);
-        this.model.rotation.set(0, 0, 0);
-        this.model.visible = true;
-        console.log('[TransitionPlane] Visible — in front of cockpit.');
+    if (!this.model) {
+        this.pendingAppear = true;
+        return;
     }
+
+    // ← ضيف الـ reattach هنا دايماً مش بس لو parent مختلف
+    const cockpitModel = this.cockpit.model;
+    if (!cockpitModel) {
+        this.pendingAppear = true;
+        console.warn('[TransitionPlane] Cockpit model not ready yet!');
+        return;
+    }
+
+    // شيل من أي parent قديم وضيفه للكوكبت
+    if (this.model.parent !== cockpitModel) {
+        this.model.parent?.remove(this.model);
+        cockpitModel.add(this.model);
+    }
+
+    this.model.position.copy(this.frontLocalPos);
+    this.model.rotation.set(0, -Math.PI * 1.5 - Math.PI / 2, 0); // ← مهم عشان يبص للأمام
+    this.model.visible = true;
+}
 
     /** Instantly move to right-side formation position */
     public moveToSide(): void {
@@ -101,6 +125,7 @@ export class TransitionPlane {
             return;
         }
         this.model.position.copy(this.sideLocalPos);
+        this.model.rotation.set(0, -Math.PI * 1.5 - Math.PI / 2, 0);
         console.log('[TransitionPlane] Moved to side formation.');
     }
 
@@ -108,6 +133,7 @@ export class TransitionPlane {
     public snapToCockpit(): void {
         if (!this.model) return;
         this.model.position.copy(this.sideLocalPos);
+        this.model.rotation.set(0, -Math.PI * 1.5 - Math.PI / 2, 0);
     }
 
     /** Hide and reset */

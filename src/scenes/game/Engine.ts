@@ -351,7 +351,7 @@ export class Engine {
     const delta = this.clock.getDelta();
 
     if (this.cockpit)         this.cockpit.update(delta);
-    if (this.transitionPlane) this.transitionPlane.update();
+    if (this.transitionPlane) this.transitionPlane?.update();
     if (this.world)           this.world.update(delta, this.cockpit.model?.position, (this.cockpit as any).angles?.yaw ?? 0);
     if (this.enemies)         this.enemies.update(delta);
     this.projectileManager.update(delta);
