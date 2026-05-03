@@ -450,8 +450,8 @@ export class CombatSystem {
   private readonly MISSILE_SPEED      =  5_000;
   private readonly BULLET_LIFE        = 10.0;
   private readonly MISSILE_LIFE       = 12.0;
-  private readonly BULLET_DAMAGE      = 3;
-  private readonly MISSILE_DAMAGE     = 10;
+  private readonly BULLET_DAMAGE      = 1;
+  private readonly MISSILE_DAMAGE     = 4;
   private readonly HIT_R_BULLET       = 500;
   private readonly HIT_R_MISSILE      = 500;
   private readonly SHOOT_INTERVAL_MIN = 2.0;
