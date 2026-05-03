@@ -141,44 +141,133 @@ export class MissionController {
     }
   }
 
+  // private showDecision(title: string, text: string, onSelect: (count: number) => void) {
+  //   // Remove any existing card first (safety)
+  //   document.getElementById('decision-card')?.remove();
+
+  //   const card = document.createElement('div');
+  //   card.id = 'decision-card';
+  //   card.style.cssText = `
+  //     position: fixed; top: 120px; right: 12px;
+  //     width: 280px; background: rgba(15, 15, 25, 0.95);
+  //     border-left: 3px solid #378ADD; border-radius: 12px;
+  //     padding: 16px; color: white; font-family: sans-serif;
+  //     z-index: 100000; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  //     backdrop-filter: blur(10px); animation: slideIn 0.4s ease-out;
+  //     direction: rtl;
+  //   `;
+
+  //   card.innerHTML = `
+  //     <style>
+  //       @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  //       .decision-btn {
+  //         margin-top: 12px; padding: 6px 15px; background: #378ADD;
+  //         border: none; color: white; border-radius: 4px; cursor: pointer;
+  //         font-weight: bold; font-size: 11px; transition: 0.2s;
+  //       }
+  //       .decision-btn:hover { background: #4ca1f5; }
+  //     </style>
+  //     <div style="font-weight: bold; color: #85B7EB; font-size: 13px; margin-bottom: 5px;">${title}</div>
+  //     <div style="font-size: 11px; color: #aab2c5; line-height: 1.5;">${text}</div>
+  //     <div style="display: flex; gap: 10px;">
+  //       <button class="decision-btn" id="opt-1">طائرة واحدة</button>
+  //       <button class="decision-btn" id="opt-2">طائرتان</button>
+  //     </div>
+  //   `;
+
+  //   document.body.appendChild(card);
+
+  //   card.querySelector('#opt-1')?.addEventListener('click', () => { card.remove(); onSelect(1); });
+  //   card.querySelector('#opt-2')?.addEventListener('click', () => { card.remove(); onSelect(2); });
+  // }
   private showDecision(title: string, text: string, onSelect: (count: number) => void) {
-    // Remove any existing card first (safety)
+    // 1. إزالة أي بطاقة قرار قديمة
     document.getElementById('decision-card')?.remove();
 
     const card = document.createElement('div');
     card.id = 'decision-card';
-    card.style.cssText = `
-      position: fixed; top: 120px; right: 12px;
-      width: 280px; background: rgba(15, 15, 25, 0.95);
-      border-left: 3px solid #378ADD; border-radius: 12px;
-      padding: 16px; color: white; font-family: sans-serif;
-      z-index: 100000; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-      backdrop-filter: blur(10px); animation: slideIn 0.4s ease-out;
-      direction: rtl;
-    `;
+    
+    // استخدمي نفس الكلاس mf-notif عشان ياخد نفس الستايل (الخلفية والحدود والظل)
+    card.className = 'mf-notif'; 
+    
+    // ضبط مكان البطاقة يدويًا لأنها خارج نظام الـ Stack بتاع النوتفيكيشن
+    Object.assign(card.style, {
+      position: 'fixed',
+      top: '120px', // تحت النوتفيكيشنز الأولى
+      right: '18px',
+      zIndex: '100000',
+      pointerEvents: 'auto',
+      flexDirection: 'column', // عشان الزراير تنزل تحت الكلام
+      width: '360px',
+      animation: 'mf-in 0.4s ease-out',
+      direction: 'rtl'
+    });
 
     card.innerHTML = `
       <style>
-        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-        .decision-btn {
-          margin-top: 12px; padding: 6px 15px; background: #378ADD;
-          border: none; color: white; border-radius: 4px; cursor: pointer;
-          font-weight: bold; font-size: 11px; transition: 0.2s;
+        .decision-actions {
+          display: flex;
+          gap: 10px;
+          margin-top: 15px;
+          width: 100%;
         }
-        .decision-btn:hover { background: #4ca1f5; }
+        .decision-btn {
+          flex: 1;
+          padding: 10px;
+          border: 1px solid #8a6a34;
+          border-radius: 6px;
+          background: radial-gradient(circle, #f5ead0, #d8b66a);
+          color: #2f2415;
+          font-family: Georgia, serif;
+          font-size: 13px;
+          font-weight: bold;
+          cursor: pointer;
+          transition: transform 0.1s, filter 0.2s;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .decision-btn:hover {
+          filter: brightness(1.1);
+          transform: translateY(-1px);
+        }
+        .decision-btn:active {
+          transform: translateY(0);
+        }
       </style>
-      <div style="font-weight: bold; color: #85B7EB; font-size: 13px; margin-bottom: 5px;">${title}</div>
-      <div style="font-size: 11px; color: #aab2c5; line-height: 1.5;">${text}</div>
-      <div style="display: flex; gap: 10px;">
+
+      <div style="display: flex; gap: 12px; width: 100%;">
+        <div class="mf-icon">?</div>
+        <div class="mf-body">
+          <div class="mf-title">${title}</div>
+          <div class="mf-msg">${text}</div>
+        </div>
+      </div>
+
+      <div class="decision-actions">
         <button class="decision-btn" id="opt-1">طائرة واحدة</button>
         <button class="decision-btn" id="opt-2">طائرتان</button>
       </div>
+      
+      <!-- شريط مزخرف سفلي بنفس لون الـ info -->
+      <div class="mf-bar" style="background: #556B2F; width: 100%;"></div>
     `;
 
     document.body.appendChild(card);
 
-    card.querySelector('#opt-1')?.addEventListener('click', () => { card.remove(); onSelect(1); });
-    card.querySelector('#opt-2')?.addEventListener('click', () => { card.remove(); onSelect(2); });
+    card.querySelector('#opt-1')?.addEventListener('click', () => { 
+      this.closeDecision(card); 
+      onSelect(1); 
+    });
+    
+    card.querySelector('#opt-2')?.addEventListener('click', () => { 
+      this.closeDecision(card); 
+      onSelect(2); 
+    });
+  }
+
+  // دالة لإغلاق القرار بنفس حركة النوتفيكيشن
+  private closeDecision(el: HTMLElement) {
+    el.classList.add('mf-hide');
+    setTimeout(() => el.remove(), 280);
   }
 
   private victory() {

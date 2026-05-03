@@ -134,6 +134,16 @@ export class EnemyManager {
         enemy.rotateY(Math.PI / 2);
 
         this.scene.add(enemy);
+
+        const box = new THREE.Box3().setFromObject(enemy);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        console.log(`Enemy size: X=${Math.round(size.x)} Y=${Math.round(size.y)} Z=${Math.round(size.z)}`);
+
+        const sphere = new THREE.Sphere();
+        box.getBoundingSphere(sphere);
+        console.log(`Enemy bounding sphere radius: ${Math.round(sphere.radius)}`);
+
         this.enemies.push(enemy);
         this.spawnIndex++;
     }

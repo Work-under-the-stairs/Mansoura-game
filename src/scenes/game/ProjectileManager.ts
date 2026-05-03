@@ -719,6 +719,117 @@ export class ProjectileManager {
     return out;
   }
 
+  public checkHits(
+  enemies: THREE.Object3D[],
+  bulletHitR: number,
+  missileHitR: number,
+  delta: number,
+  onHit: (enemy: THREE.Object3D, kind: 'bullet' | 'missile') => void,
+): void {
+  const iMat = this.bulletMesh.instanceMatrix.array;
+
+  // ── Bullets ──────────────────────────────────────────
+  // for (let i = 0; i < MAX_BULLETS; i++) {
+  //   if (!this.bAlive[i]) continue;
+
+  //   const base = i * 16;
+  //   const px = iMat[base + 12];
+  //   const py = iMat[base + 13];
+  //   const pz = iMat[base + 14];
+
+  //   for (const enemy of enemies) {
+  //     if (enemy.userData.isDead) continue;
+
+  //     const ex = enemy.position.x - px;
+  //     const ey = enemy.position.y - py;
+  //     const ez = enemy.position.z - pz;
+  //     const distSq = ex * ex + ey * ey + ez * ez;
+
+  //     if (distSq < bulletHitR * bulletHitR) {
+  //       this.killBulletSlot(i);
+  //       onHit(enemy, 'bullet');
+  //       break; // رصاصة واحدة بتصيب عدو واحد بس
+  //     }
+  //   }
+  // }
+  // ── Bullets — Swept Sphere ────────────────────────────────────
+for (let i = 0; i < MAX_BULLETS; i++) {
+  if (!this.bAlive[i]) continue;
+  // console.log(`bullet ${i} alive`);
+
+  const base = i * 16;
+  
+  // مكان الرصاصة دلوقتي
+  const px = iMat[base + 12];
+  const py = iMat[base + 13];
+  const pz = iMat[base + 14];
+
+  // if (i === 10) console.log(`bullet pos: ${Math.round(px)}, ${Math.round(py)}, ${Math.round(pz)}`);
+
+  // مكانها في الـ frame اللي فات (قبل الـ update)
+  // بنحسبه بالعكس من الـ velocity
+  const prevX = px - this.bVx[i] * delta;
+  const prevY = py - this.bVy[i] * delta;
+  const prevZ = pz - this.bVz[i] * delta;
+
+  // اتجاه الحركة (الخط اللي اتحركته)
+  const dx = px - prevX;
+  const dy = py - prevY;
+  const dz = pz - prevZ;
+  const lenSq = dx*dx + dy*dy + dz*dz;
+
+  for (const enemy of enemies) {
+    if (enemy.userData.isDead) continue;
+
+    // if (i === 10) console.log(`enemy pos: ${Math.round(enemy.position.x)}, ${Math.round(enemy.position.y)}, ${Math.round(enemy.position.z)}`);
+
+
+    const ex = enemy.position.x;
+    const ey = enemy.position.y;
+    const ez = enemy.position.z;
+
+    // أقرب نقطة على الخط للعدو
+    let t = 0;
+    if (lenSq > 0) {
+      t = ((ex - prevX)*dx + (ey - prevY)*dy + (ez - prevZ)*dz) / lenSq;
+      t = Math.max(0, Math.min(1, t)); // نخليه بين بداية ونهاية الـ frame بس
+    }
+
+    const cx = prevX + dx * t - ex;
+    const cy = prevY + dy * t - ey;
+    const cz = prevZ + dz * t - ez;
+    const distSq = cx*cx + cy*cy + cz*cz;
+
+    // console.log(`bullet dist=${Math.round(Math.sqrt(distSq))} hitR=${bulletHitR}`);
+
+    if (distSq < bulletHitR * bulletHitR) {
+      this.killBulletSlot(i);
+      onHit(enemy, 'bullet');
+      break;
+    }
+  }
+}
+
+  // ── Missiles ─────────────────────────────────────────
+  for (const m of this.missiles) {
+    for (const enemy of enemies) {
+      if (enemy.userData.isDead) continue;
+
+      const ex = enemy.position.x - m.mesh.position.x;
+      const ey = enemy.position.y - m.mesh.position.y;
+      const ez = enemy.position.z - m.mesh.position.z;
+      const distSq = ex * ex + ey * ey + ez * ez;
+
+      if (distSq < missileHitR * missileHitR) {
+        m.life = 0; // هيتشال في الـ update الجاي
+        console.log(`HIT distSq=${Math.round(Math.sqrt(distSq))} hitR=${bulletHitR}`);
+        onHit(enemy, 'missile');
+        break;
+      }
+    }
+  }
+}
+
   /** Called by CombatSystem when a bullet hits an enemy. */
   public killBulletSlot(slot: number): void {
     if (slot < 0 || slot >= MAX_BULLETS) return;

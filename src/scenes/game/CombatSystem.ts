@@ -460,10 +460,11 @@ export class CombatSystem {
   private readonly SHOOT_INTERVAL_MIN = 2.0;
   private readonly SHOOT_INTERVAL_MAX = 5.0;
 
-  private readonly PLAYER_BULLET_DMG   = 12;
+  private readonly PLAYER_BULLET_DMG   = 20;
   private readonly PLAYER_MISSILE_DMG  = 40;
-  private readonly ENEMY_HIT_R_BULLET  = 3000;
-  private readonly ENEMY_HIT_R_MISSILE = 3000;
+  // private readonly ENEMY_HIT_R_BULLET  = 3000;
+  private readonly ENEMY_HIT_R_BULLET  = 9000;
+  private readonly ENEMY_HIT_R_MISSILE = 3500;
 
   private readonly bulletGeo:   THREE.CylinderGeometry;
   private readonly bulletMat:   THREE.MeshBasicMaterial;
@@ -555,7 +556,14 @@ export class CombatSystem {
 
     this.updateEnemyShooting(delta, cockpitPos);
     this.updateEnemyShots(delta, cockpitPos);
-    this.checkPlayerShotsHitEnemies();
+    // this.checkPlayerShotsHitEnemies();
+    this.projectileManager.checkHits(
+      this.enemyManager.getEnemies(),
+      this.ENEMY_HIT_R_BULLET,
+      this.ENEMY_HIT_R_MISSILE,
+      delta,
+      (enemy, kind) => this.handleEnemyHit(enemy, kind),
+    );
   }
 
   public dispose(): void {
@@ -749,45 +757,62 @@ export class CombatSystem {
 
   // ── Player shots hitting enemies ──────────────────────────────
 
-  private checkPlayerShotsHitEnemies(): void {
-    const projs = (this.projectileManager as any).projectiles as Array<{
-      kind:  string;
-      mesh:  THREE.Object3D;
-      alive: boolean;
-    }> | undefined;
-    if (!projs) return;
+  // private checkPlayerShotsHitEnemies(): void {
+  //   const projs = (this.projectileManager as any).projectiles as Array<{
+  //     kind:  string;
+  //     mesh:  THREE.Object3D;
+  //     alive: boolean;
+  //   }> | undefined;
+  //   if (!projs) return;
 
-    for (const proj of projs) {
-      if (!proj.alive) continue;
+  //   for (const proj of projs) {
+  //     if (!proj.alive) continue;
 
-      for (const enemy of this.enemyManager.getEnemies()) {
-        if (enemy.userData.isDead) continue;
+  //     for (const enemy of this.enemyManager.getEnemies()) {
+  //       if (enemy.userData.isDead) continue;
 
-        if (enemy.userData.hp === undefined) {
-          enemy.userData.hp = 1;
-        }
+  //       if (enemy.userData.hp === undefined) {
+  //         enemy.userData.hp = 1;
+  //       }
 
-        const dist = proj.mesh.position.distanceTo(enemy.position);
-        const hitR = proj.kind === 'missile' ? this.ENEMY_HIT_R_MISSILE : this.ENEMY_HIT_R_BULLET;
+  //       const dist = proj.mesh.position.distanceTo(enemy.position);
+  //       const hitR = proj.kind === 'missile' ? this.ENEMY_HIT_R_MISSILE : this.ENEMY_HIT_R_BULLET;
 
-        if (dist < hitR) {
-          proj.alive = false;
-          const dmg = proj.kind === 'missile' ? this.PLAYER_MISSILE_DMG : this.PLAYER_BULLET_DMG;
-          enemy.userData.hp -= dmg;
-          console.log(`💥 HIT! dist=${Math.round(dist)} hitR=${hitR} dmg=${dmg} hp=${enemy.userData.hp}`);
+  //       if (dist < hitR) {
+  //         proj.alive = false;
+  //         const dmg = proj.kind === 'missile' ? this.PLAYER_MISSILE_DMG : this.PLAYER_BULLET_DMG;
+  //         enemy.userData.hp -= dmg;
+  //         console.log(`💥 HIT! dist=${Math.round(dist)} hitR=${hitR} dmg=${dmg} hp=${enemy.userData.hp}`);
 
-          this.flashEnemy(enemy, 0.15);
+  //         this.flashEnemy(enemy, 0.15);
 
-          if (enemy.userData.hp <= 0) {
-            this.explodeAndRemove(enemy);
-          }
+  //         if (enemy.userData.hp <= 0) {
+  //           this.explodeAndRemove(enemy);
+  //         }
 
-          break;
-        }
-      }
+  //         break;
+  //       }
+  //     }
+  //   }
+  // }
+
+  private handleEnemyHit(enemy: THREE.Object3D, kind: 'bullet' | 'missile'): void {
+    if (enemy.userData.isDead) return;
+
+    if (enemy.userData.hp === undefined) {
+      enemy.userData.hp = 50; // ✅ HP حقيقي مش 1
+    }
+
+    const dmg = kind === 'missile' ? this.PLAYER_MISSILE_DMG : this.PLAYER_BULLET_DMG;
+    enemy.userData.hp -= dmg;
+
+    console.log(`💥 HIT! kind=${kind} dmg=${dmg} hp=${enemy.userData.hp}`);
+    this.flashEnemy(enemy, 0.15);
+
+    if (enemy.userData.hp <= 0) {
+      this.explodeAndRemove(enemy);
     }
   }
-
   // ── Enemy death ───────────────────────────────────────────────
 
   private explodeAndRemove(enemy: THREE.Object3D): void {
