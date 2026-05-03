@@ -11,6 +11,9 @@ import { NotificationSystem } from './NotificationSystem';
 import { applyMobileOptimizations } from '../../utils/MobileOptimizer';
 import { MissionController } from './MissionController';
 
+// ✅ النظام الجديد — بديل EXR كاملاً
+import { ProceduralSky, InfiniteTerrain, setupFog, setupLighting } from './Egyptterrain';
+
 export class Engine {
   private loadingScene: LoadingScene;
   private loadingManager: THREE.LoadingManager;
@@ -37,8 +40,11 @@ export class Engine {
   private animationStarted = false;
   private levelStarted = 0;
 
-  // ✅ Keep a reference so we can reset it on replay
   private missionController: MissionController | null = null;
+
+  // ✅ مراجع النظام الجديد
+  private sky: ProceduralSky | null = null;
+  private terrain: InfiniteTerrain | null = null;
 
   constructor(loadingScene: LoadingScene) {
     this.loadingScene   = loadingScene;
@@ -61,7 +67,8 @@ export class Engine {
       52,
       window.innerWidth / window.innerHeight,
       0.1,
-      80000,
+      // ✅ زودنا الـ far plane — السماء قطرها 450000
+      500000,
     );
     this.camera.position.set(450, 5450, 6200);
     this.camera.lookAt(900, 240, -12000);
@@ -74,8 +81,9 @@ export class Engine {
     this.container.style.position = 'fixed';
     this.container.style.inset = '0';
     this.container.style.zIndex = '5';
-    this.container.style.background =
-      'linear-gradient(180deg, #88bbed 0%, #d9ecff 55%, #ede2c9 100%)';
+    // ✅ لون الـ background يطابق لون ضباب EgyptTerrain1973 (بيج رملي)
+    // لو السماء البروسيديورال شغالة مش هتشوف ده أبداً، بس لازم يتطابق
+    this.container.style.background = '#C8B89A';
     document.body.appendChild(this.container);
 
     this.renderer = new THREE.WebGLRenderer({
@@ -87,7 +95,8 @@ export class Engine {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.toneMapping         = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    // ✅ رفعنا الـ exposure — يخلي الكل أكثر إضاءة بدون تكلفة على الأداء
+    this.renderer.toneMappingExposure = 1.25;
     this.renderer.outputColorSpace    = THREE.SRGBColorSpace;
     this.renderer.shadowMap.enabled   = !this.isMobile;
     this.renderer.shadowMap.type      = THREE.PCFSoftShadowMap;
@@ -103,7 +112,7 @@ export class Engine {
       this.scene,
       this.loadingManager,
       {
-        skyExrUrl:       this.isMobile ? '/images/qwantani_afternoon_1k.exr' : '/images/qwantani_afternoon_2k.exr',
+        // ✅ حذفنا skyExrUrl خالص — مفيش EXR
         terrainSize:     42000,
         terrainSegments: this.isMobile ? 100 : 420,
         riverWidth:      420,
@@ -140,14 +149,28 @@ export class Engine {
       }
     );
 
+    // ✅ الإضاءة والبيئة الجديدة
     this.setupLights();
     this.createEnvironment();
+
+    // ✅ السماء والتضاريس — بعد setupLights عشان الضوء يكون جاهز
+    this.sky     = new ProceduralSky(this.scene);
+    this.terrain = new InfiniteTerrain(this.scene);
+
+    // ✅ ٢ ظهر بالضبط (0.5 = ظهر، 0.58 = ٢ ظهر تقريباً)
+    this.sky.setTimeOfDay(0.58);
+
+    // ✅ خفّضنا الـ HemisphereLight — setupLighting بيضيف ambient + fill كافيين
+    //    لو خلّيناه بنفس القيمة بيتضاعف الضوء ويبقى overexposed
+    const hemi = new THREE.HemisphereLight(0xC8E0FF, 0xA89060, 0.5);
+    hemi.matrixAutoUpdate = false;
+    hemi.updateMatrix();
+    this.scene.add(hemi);
 
     window.addEventListener('resize', this.onWindowResize);
 
     this.hide();
 
-    // ✅ Store reference on the instance, not just window
     this.missionController = new MissionController(this);
     (window as any).missionController = this.missionController;
   }
@@ -199,34 +222,19 @@ export class Engine {
   //  Full game reset (Replay without destroying Engine)
   // =====================
 
-  /**
-   * ✅ Resets ALL game state back to the very beginning:
-   *    - Health → 100%
-   *    - Mission state → START
-   *    - All enemies cleared
-   *    - All projectiles cleared
-   *    - Cockpit position/rotation → initial
-   *    - HUD refreshed
-   *
-   * Call this instead of destroy() + new Engine() when the player clicks Replay.
-   */
   public resetForReplay(): void {
     console.log('[Engine] Resetting for replay...');
 
-    // 1. Cancel pending mission timers, clear decision cards, reset state machine
     if (this.missionController) {
       this.missionController.reset();
     }
 
-    // 2. Clear all active enemies and reset spawn index
     if (this.enemies) {
       this.enemies.clearAll();
     }
 
-    // 3. Clear all in-flight projectiles
     if (this.projectileManager) {
       (this.projectileManager as any).clearAll?.();
-      // Brute-force clear projectile meshes from scene
       const projs = (this.projectileManager as any).projectiles as Array<{mesh: any, alive: boolean}> | undefined;
       if (projs) {
         for (const p of projs) { this.scene.remove(p.mesh); p.alive = false; }
@@ -234,12 +242,10 @@ export class Engine {
       }
     }
 
-    // 4. Reset health + combat system (hides death screen, resets HP bar to 100)
     if (this.combatSystem) {
       this.combatSystem.reset();
     }
 
-    // 5. Reset cockpit position and rotation to the starting point
     if (this.cockpit?.model) {
       this.cockpit.model.position.set(450, 1450, 6200);
       this.cockpit.model.rotation.set(0, 0, 0);
@@ -248,7 +254,6 @@ export class Engine {
       (this.cockpit as any).currentSpeed = (this.cockpit as any).config.minSpeed;
     }
 
-    // 6. Restart mission — levelStarted=false lets animate() call start() next frame
     this.levelStarted = 0;
     console.log('[Engine] Reset complete — mission restarting.');
   }
@@ -258,43 +263,20 @@ export class Engine {
   // =====================
 
   private setupLights(): void {
-    const ambientLight = new THREE.AmbientLight(0xffffff, 1);
-    this.scene.add(ambientLight);
+    // ✅ استخدمنا setupLighting من EgyptTerrain1973
+    // بترجع sun و ambient لو محتجتيهم بعدين
+    setupLighting(this.scene);
 
-    const sunLight = new THREE.DirectionalLight(0xfff3d0, 4);
-    sunLight.position.set(-9000, 8500, -5000);
-    sunLight.castShadow = !this.isMobile;
-
-    // ✅ Shadow map: 1024 على desktop (كان 2048) — نفس الكواليتي تقريباً، نص حساب GPU
-    sunLight.shadow.mapSize.set(
-      this.isMobile ? 512 : 1024,
-      this.isMobile ? 512 : 1024,
-    );
-    sunLight.shadow.camera.left   = -20000;
-    sunLight.shadow.camera.right  =  20000;
-    sunLight.shadow.camera.top    =  20000;
-    sunLight.shadow.camera.bottom = -20000;
-    sunLight.shadow.camera.far    =  50000;
-
-    // ✅ الـ sun ثابت مش بيتحرك — نوقف تحديث الـ matrix تلقائياً
-    sunLight.matrixAutoUpdate = false;
-    sunLight.updateMatrix();
-
-    this.scene.add(sunLight);
-
+    // ✅ HemisphereLight ثابت زي الأصل
     const hemi = new THREE.HemisphereLight(0xe7f3ff, 0x97886a, 1.0);
-    // ✅ الـ hemi ثابت كمان
     hemi.matrixAutoUpdate = false;
     hemi.updateMatrix();
     this.scene.add(hemi);
   }
 
   private createEnvironment(): void {
-    this.scene.fog = new THREE.Fog(
-      0xcad9e6,
-      this.isMobile ? 5000 : 9000,
-      this.isMobile ? 30000 : 52000,
-    );
+    // ✅ setupFog من EgyptTerrain1973 — بيخفي الـ horizon seam
+    setupFog(this.scene);
   }
 
   // =====================
@@ -305,11 +287,8 @@ export class Engine {
     if (this.combatSystem && options) {
       const hs = (this.combatSystem as any).health;
 
-      // ✅ On Replay: reset in-place ONLY — never call options.onRestart because
-      //    that creates a new Engine in main.ts which crashes (loadingScene is gone)
       hs.onRestartCallback = () => {
         this.resetForReplay();
-        // Do NOT call options.onRestart?.() here — it would rebuild the Engine
       };
 
       hs.onExitCallback = () => {
@@ -346,6 +325,12 @@ export class Engine {
     this.projectileManager.update(delta);
     this.combatSystem.update(delta);
 
+    // ✅ تحديث السماء والتضاريس كل frame
+    if (this.sky)     this.sky.update(this.camera, delta);
+    if (this.terrain && this.cockpit.model) {
+      this.terrain.update(this.cockpit.model.position);
+    }
+
     this.renderer.render(this.scene, this.camera);
 
     if (!this.mobileOptimized && this.cockpit.model) {
@@ -353,15 +338,13 @@ export class Engine {
       this.mobileOptimized = true;
     }
 
-    // ✅ levelStarted is reset by resetForReplay(), so mission auto-restarts
     if (!this.levelStarted && this.cockpit.model) {
       if (this.missionController) {
         this.missionController.start();
         this.levelStarted = 1;
       }
     }
-    if(this.levelStarted === 1 && this.missionController?.getMissionState()) {
-      // this.missionController.start();
+    if (this.levelStarted === 1 && this.missionController?.getMissionState()) {
       console.log("Mission state indicates victory, starting next level...");
       this.levelStarted = 2;
     }
@@ -371,7 +354,6 @@ export class Engine {
     window.cancelAnimationFrame(this.animationFrameId);
     window.removeEventListener('resize', this.onWindowResize);
 
-    // Clean up mission timers
     if (this.missionController) {
       this.missionController.reset();
       this.missionController = null;
@@ -384,6 +366,19 @@ export class Engine {
     if (this.combatSystem)         this.combatSystem.dispose();
     if (this.notifications)        this.notifications.destroy();
 
+    // ✅ تنظيف السماء والتضاريس
+    if (this.sky) {
+      (this.sky as any).mesh && this.scene.remove((this.sky as any).mesh);
+      this.sky = null;
+    }
+    if (this.terrain) {
+      (this.terrain as any).chunks?.forEach((chunk: any) => {
+        this.scene.remove(chunk.mesh);
+        chunk.mesh.geometry.dispose();
+      });
+      this.terrain = null;
+    }
+
     this.renderer.dispose();
     this.container.remove();
 
@@ -392,6 +387,11 @@ export class Engine {
 
   public onReady(callback: () => void): void {
     this.readyCallback = callback;
+  }
+
+  // ✅ لو محتاجة تعرفي الطيارة فوق الأرض ولا لأ
+  public getGroundHeight(x: number, z: number): number {
+    return this.terrain?.getHeightAt(x, z) ?? 0;
   }
 
   private optimizeForMobile(): void {
