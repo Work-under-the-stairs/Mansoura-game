@@ -705,14 +705,14 @@ export class CombatSystem {
           this.sound.play('bullet_hit', 0.7, 0.12);
         }
 
-        this.notifications.show({
-          type: 'warn',
-          title: s.isMissile ? 'إصابة بصاروخ' : 'إصابة برصاص',
-          msg: s.isMissile
-            ? 'صاروخ معادٍ أصاب الطائرة. تم رصد أضرار هيكلية.'
-            : `إصابة مباشرة — سلامة الهيكل ${Math.round(this.health.hp)}%`,
-          duration: 3000,
-        });
+        // this.notifications.show({
+        //   type: 'warn',
+        //   title: s.isMissile ? 'إصابة بصاروخ' : 'إصابة برصاص',
+        //   msg: s.isMissile
+        //     ? 'صاروخ معادٍ أصاب الطائرة. تم رصد أضرار هيكلية.'
+        //     : `إصابة مباشرة — سلامة الهيكل ${Math.round(this.health.hp)}%`,
+        //   duration: 3000,
+        // });
       }
     }
 
