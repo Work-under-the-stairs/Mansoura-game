@@ -111,9 +111,20 @@ export class MobileControls {
         text-shadow: 0 0 6px var(--btn-glow);
       }
 
-      .btn-machinegun { --btn-color: rgba(255,210,0,0.75); --btn-glow: rgba(255,210,0,0.3); }
-      .btn-missiles   { --btn-color: rgba(0,210,255,0.75); --btn-glow: rgba(0,210,255,0.3); }
-      .btn-boost      { --btn-color: rgba(255,120,0,0.75);  --btn-glow: rgba(255,120,0,0.3);  }
+      .btn-machinegun {
+  --btn-color: rgba(201,168,76,0.85);   /* beige */
+  --btn-glow: rgba(201,168,76,0.35);
+}
+
+.btn-missiles {
+  --btn-color: rgba(85,107,47,0.85);    /* green */
+  --btn-glow: rgba(85,107,47,0.35);
+}
+
+.btn-boost {
+  --btn-color: rgba(139,26,26,0.85);    /* red */
+  --btn-glow: rgba(139,26,26,0.35);
+}
 
       #mobile-joystick-area {
         position: absolute;
