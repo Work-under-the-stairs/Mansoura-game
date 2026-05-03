@@ -234,20 +234,46 @@ class HealthSystem {
     setTimeout(() => { this.hitOverlay.style.opacity = '0'; }, 100);
   }
 
-  private onDeath(): void {
-    this.isDead = true;
-    this.deathEl.style.visibility    = 'visible';
-    this.deathEl.style.pointerEvents = 'all';
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        this.deathEl.classList.add('cs-visible');
-      });
-    });
-    this.shakeTimer     = 3.0;
-    this.shakeIntensity = 0.0006;
-    this.onDeathCallback?.();
-  }
+  // Replace ONLY the onDeath() method inside HealthSystem with this version
 
+private onDeath(): void {
+  // Prevent duplicate triggers
+  if (this.isDead) return;
+
+  this.isDead = true;
+
+  // Force health to zero visually
+  this.hp = 0;
+  this.refreshBar();
+
+  // Strong crash shake effect
+  this.shakeTimer = 3.0;
+  this.shakeIntensity = 0.0006;
+
+  // Always show redeploy screen immediately
+  this.deathEl.style.visibility = 'visible';
+  this.deathEl.style.opacity = '0';
+  this.deathEl.style.pointerEvents = 'all';
+
+  // Ensure DOM paints first, then animate in
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      this.deathEl.classList.add('cs-visible');
+      this.deathEl.style.opacity = '1';
+    });
+  });
+
+  // Safety fallback: if CSS class fails, still show after short delay
+  setTimeout(() => {
+    this.deathEl.style.visibility = 'visible';
+    this.deathEl.style.opacity = '1';
+    this.deathEl.style.pointerEvents = 'all';
+    this.deathEl.classList.add('cs-visible');
+  }, 120);
+
+  // Trigger external death callback (sound / notification)
+  this.onDeathCallback?.();
+}
   private buildHUD(): void {
     document.getElementById('cs-hud-root')?.remove();
 
