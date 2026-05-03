@@ -164,8 +164,8 @@ private victory() {
   audio.volume = 0.8;
   audio.preload = 'auto'; // 👈 eagerly load the file
 
-  const startTime = 190;
-  const endTime = 210;
+  const startTime = 193;
+  const endTime = 207;
 
   const playClip = () => {
     audio.currentTime = startTime;
