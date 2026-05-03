@@ -428,6 +428,7 @@ interface EnemyShot {
 export class CombatSystem {
   public readonly health: HealthSystem;
   private readonly sound = new SoundSystem();
+  private readonly isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
 
   private readonly ENGAGE_DIST = 120_000;
   private readonly BULLET_SPEED = 12_000;
@@ -792,14 +793,18 @@ export class CombatSystem {
   const smokeTexture = this.getOrCreateTexture('smoke', () => this.createSmokeTexture());
   const debrisTexture = this.getOrCreateTexture('debris', () => this.createDebrisTexture());
 
-  // 🔥 MAIN FLASH - ABSOLUTELY MASSIVE
-  const flashLayers = [
-    { color: 0xffffff, size: 2500, opacity: 1.0, life: 0.18, scaleMulti: 8.0 },    // Enormous white core
-    { color: 0xffcc88, size: 3800, opacity: 0.95, life: 0.25, scaleMulti: 9.0 },   // Gigantic orange
-    { color: 0xff8800, size: 5200, opacity: 0.85, life: 0.35, scaleMulti: 10.0 },  // Titan orange-red
-    { color: 0xff4400, size: 7000, opacity: 0.7, life: 0.48, scaleMulti: 11.0 },   // Colossal red
-    { color: 0xcc2200, size: 9000, opacity: 0.5, life: 0.65, scaleMulti: 12.0 },   // Monstrous dark red
-    { color: 0xaa1100, size: 12000, opacity: 0.3, life: 0.85, scaleMulti: 13.0 },  // Epic outer glow
+  // 🔥 MAIN FLASH - reduced on mobile to prevent crashes
+  const flashLayers = this.isMobile ? [
+    { color: 0xffffff, size: 2500, opacity: 1.0, life: 0.18, scaleMulti: 8.0 },
+    { color: 0xff8800, size: 5200, opacity: 0.85, life: 0.35, scaleMulti: 10.0 },
+    { color: 0xff4400, size: 7000, opacity: 0.7, life: 0.48, scaleMulti: 11.0 },
+  ] : [
+    { color: 0xffffff, size: 2500, opacity: 1.0, life: 0.18, scaleMulti: 8.0 },
+    { color: 0xffcc88, size: 3800, opacity: 0.95, life: 0.25, scaleMulti: 9.0 },
+    { color: 0xff8800, size: 5200, opacity: 0.85, life: 0.35, scaleMulti: 10.0 },
+    { color: 0xff4400, size: 7000, opacity: 0.7, life: 0.48, scaleMulti: 11.0 },
+    { color: 0xcc2200, size: 9000, opacity: 0.5, life: 0.65, scaleMulti: 12.0 },
+    { color: 0xaa1100, size: 12000, opacity: 0.3, life: 0.85, scaleMulti: 13.0 },
   ];
 
   // Fire core with additive blending - SUPER MASSIVE
@@ -847,8 +852,12 @@ export class CombatSystem {
     requestAnimationFrame(tick);
   }
 
-  // 💨 SMOKE - COLOSSAL CLOUDS
-  const smokeLayers = [
+  // 💨 SMOKE - reduced on mobile
+  const smokeLayers = this.isMobile ? [
+    { color: 0x2a1a0a, size: 4000, opacity: 0.65, life: 1.2, riseSpeed: 6.0, drift: 2.5, count: 2 },
+    { color: 0x6a5a4a, size: 8500, opacity: 0.45, life: 2.0, riseSpeed: 4.0, drift: 1.5, count: 2 },
+    { color: 0xaa9a8a, size: 14000, opacity: 0.25, life: 3.0, riseSpeed: 2.0, drift: 0.8, count: 1 },
+  ] : [
     { color: 0x2a1a0a, size: 4000, opacity: 0.65, life: 1.5, riseSpeed: 6.0, drift: 2.5, count: 5 },
     { color: 0x4a3a2a, size: 6000, opacity: 0.55, life: 2.0, riseSpeed: 5.0, drift: 2.0, count: 5 },
     { color: 0x6a5a4a, size: 8500, opacity: 0.45, life: 2.6, riseSpeed: 4.0, drift: 1.5, count: 5 },
@@ -915,8 +924,8 @@ export class CombatSystem {
     }
   }
 
-  // 🔥 FIREBALL PARTICLES - EPIC AMOUNT
-  const fireParticleCount = 180; // Massive increase
+  // 🔥 FIREBALL PARTICLES - reduced on mobile
+  const fireParticleCount = this.isMobile ? 20 : 180;
   for (let i = 0; i < fireParticleCount; i++) {
     const mat = new THREE.SpriteMaterial({
       map: flashTexture,
@@ -971,8 +980,8 @@ export class CombatSystem {
     requestAnimationFrame(tick);
   }
 
-  // 💥 SHOCKWAVE RINGS - MULTIPLE MASSIVE RINGS
-  const ringCount = 3;
+  // 💥 SHOCKWAVE RINGS - reduced on mobile
+  const ringCount = this.isMobile ? 1 : 3;
   for (let r = 0; r < ringCount; r++) {
     const ringGeo = new THREE.RingGeometry(30 + r * 20, 80 + r * 30, 64);
     const ringMat = new THREE.MeshBasicMaterial({
@@ -1025,8 +1034,8 @@ export class CombatSystem {
     requestAnimationFrame(ringTick);
   }
 
-  // 💨 DEBRIS PARTICLES - MASSIVE AMOUNT
-  const debrisCount = 120; // Huge increase
+  // 💨 DEBRIS PARTICLES - reduced on mobile
+  const debrisCount = this.isMobile ? 15 : 120;
   for (let i = 0; i < debrisCount; i++) {
     const mat = new THREE.SpriteMaterial({
       map: debrisTexture,
@@ -1135,8 +1144,8 @@ export class CombatSystem {
     }, 60);
   }, 0);
 
-  // 🌋 MUSHROOM CLOUD STEM (rising column of fire)
-  const stemCount = 30;
+  // 🌋 MUSHROOM CLOUD STEM - reduced on mobile
+  const stemCount = this.isMobile ? 5 : 30;
   for (let i = 0; i < stemCount; i++) {
     const mat = new THREE.SpriteMaterial({
       map: flashTexture,
