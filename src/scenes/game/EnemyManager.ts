@@ -130,8 +130,9 @@ export class EnemyManager {
         enemy.userData.offsetX   = offsetX;
         enemy.userData.spawnTime = this.elapsedTime;
 
+        // GLB forward axis is -X; lookAt aligns -Z to target, so rotate -90° Y to fix.
         enemy.lookAt(this._cockpitPos);
-        enemy.rotateY(Math.PI / 2);
+        enemy.rotateY(-Math.PI / 2);
 
         this.scene.add(enemy);
 
@@ -236,7 +237,7 @@ for (let i = 0; i < this.enemies.length; i++) {
   this._targetQuat.copy(enemy.quaternion);
   enemy.quaternion.slerp(this._targetQuat, delta * 1.5); // تقليل سرعة الدوران عشان ميرقصش منك
 
-  enemy.rotateY(Math.PI / 2);
+  enemy.rotateY(-Math.PI / 2);
 }
   }
 }
