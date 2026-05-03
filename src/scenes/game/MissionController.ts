@@ -18,6 +18,9 @@ export class MissionController {
   private pendingTimers: ReturnType<typeof setTimeout>[] = [];
   private victoryDeclared = false;
 
+  /** Called exactly once when level 1 is complete. Wired by Engine. */
+  public onVictory: (() => void) | null = null;
+
   constructor(private engine: Engine) {}
 
   public start() {
@@ -127,7 +130,8 @@ export class MissionController {
     }
     else if (this.state === MissionState.MANSOURA_BATTLE) {
       this.enemyKilledCount++;
-      if (this.enemyKilledCount < 1) { //was 6
+      if (this.enemyKilledCount < 3) {
+        // Spawn the next enemy until all 3 are killed
         this.later(() => this.spawnWave(1), 2000);
       } else {
         this.later(() => this.victory(), 3000);
@@ -240,8 +244,13 @@ export class MissionController {
     this.engine.notif.show({
       type: 'success', title: 'نصر مبيناً',
       msg: 'تم دحر العدو بنجاح في المنصورة! انتظر الأوامر القادمة...',
-      duration: 10000
+      duration: 4000
     });
+
+    // Notify Engine directly — no polling needed
+    this.later(() => {
+      this.onVictory?.();
+    }, 4500);
   }
   public getMissionState() {
     return this.victoryDeclared;
