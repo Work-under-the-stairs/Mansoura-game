@@ -39,10 +39,10 @@ export class Engine {
   private animationStarted = false;
   private levelStarted = 0;
 
-  // ✅ Keep a reference so we can reset it on replay
   private missionController: MissionController | null = null;
   private missionController2: MissionController2 | null = null;
   public transitionPlane: TransitionPlane | null = null;
+
   constructor(loadingScene: LoadingScene) {
     this.loadingScene   = loadingScene;
     this.loadingManager = new THREE.LoadingManager();
@@ -127,7 +127,7 @@ export class Engine {
 
     this.enemies = new EnemyManager(this.scene, this.camera, this.cockpit);
 
-    // Companion plane — created here, model loads async via loadingManager
+    // Companion plane — model loads async via loadingManager
     this.transitionPlane = new TransitionPlane(this.scene, this.loadingManager, this.cockpit);
 
     this.combatSystem = new CombatSystem(
@@ -153,7 +153,6 @@ export class Engine {
 
     this.hide();
 
-    // ✅ Store reference on the instance, not just window
     this.missionController  = new MissionController(this);
     this.missionController2 = new MissionController2(this);
     (window as any).missionController = this.missionController;
@@ -163,13 +162,16 @@ export class Engine {
       if (this.levelStarted !== 1) return;
       console.log('[Engine] Level 1 complete → Level 2 starting');
       this.enemies.clearAll();
-      const projs = (this.projectileManager as any).projectiles as Array<{mesh:any,alive:boolean}>|undefined;
-      if (projs) { for (const p of projs) { this.scene.remove(p.mesh); p.alive = false; } (this.projectileManager as any).projectiles = []; }
+      const projs = (this.projectileManager as any).projectiles as Array<{mesh: any, alive: boolean}> | undefined;
+      if (projs) {
+        for (const p of projs) { this.scene.remove(p.mesh); p.alive = false; }
+        (this.projectileManager as any).projectiles = [];
+      }
       console.log('[Engine] Level 1 victory detected. Starting Level 2 sequence.');
       this.levelStarted = 2;
       if (this.missionController2) {
-          this.missionController2.reset();
-          this.missionController2.start();
+        this.missionController2.reset();
+        this.missionController2.start();
       }
     };
   }
@@ -221,28 +223,15 @@ export class Engine {
   //  Full game reset (Replay without destroying Engine)
   // =====================
 
-  /**
-   * ✅ Resets ALL game state back to the very beginning:
-   *    - Health → 100%
-   *    - Mission state → START
-   *    - All enemies cleared
-   *    - All projectiles cleared
-   *    - All managed particles cleared (via combatSystem.reset())
-   *    - Cockpit position/rotation → initial
-   *    - HUD refreshed
-   */
   public resetForReplay(): void {
     console.log('[Engine] Resetting for replay...');
 
-    // 1. Cancel pending mission timers, clear decision cards, reset state machine
-    if (this.missionController) {
-      this.missionController.reset();
-    }
+    // 1. Cancel pending mission timers, clear decision cards, reset state machines
+    if (this.missionController)  this.missionController.reset();
+    if (this.missionController2) this.missionController2.reset();
 
     // 2. Clear all active enemies and reset spawn index
-    if (this.enemies) {
-      this.enemies.clearAll();
-    }
+    if (this.enemies) this.enemies.clearAll();
 
     // 3. Clear all in-flight projectiles
     if (this.projectileManager) {
@@ -254,12 +243,8 @@ export class Engine {
       }
     }
 
-    // 4. Reset health + combat system
-    //    ✅ combatSystem.reset() also clears all managed particles,
-    //       falling enemies, and shockwave rings — no rAF leak risk on replay
-    if (this.combatSystem) {
-      this.combatSystem.reset();
-    }
+    // 4. Reset health + combat system (hides death screen, resets HP bar to 100)
+    if (this.combatSystem) this.combatSystem.reset();
 
     // 5. Reset cockpit position and rotation to the starting point
     if (this.cockpit?.model) {
@@ -270,10 +255,10 @@ export class Engine {
       (this.cockpit as any).currentSpeed = (this.cockpit as any).config.minSpeed;
     }
 
-    // 6. Snap companion plane back
+    // 6. Snap companion plane back to cockpit
     this.transitionPlane?.snapToCockpit();
 
-    // 7. Restart mission
+    // 7. Restart mission — levelStarted=0 lets animate() call start() next frame
     this.levelStarted = 0;
     console.log('[Engine] Reset complete — mission restarting.');
   }
@@ -302,7 +287,6 @@ export class Engine {
 
     sunLight.matrixAutoUpdate = false;
     sunLight.updateMatrix();
-
     this.scene.add(sunLight);
 
     const hemi = new THREE.HemisphereLight(0xe7f3ff, 0x97886a, 1.0);
@@ -327,8 +311,8 @@ export class Engine {
     if (this.combatSystem && options) {
       const hs = (this.combatSystem as any).health;
 
-      // ✅ On Replay: reset in-place ONLY — never call options.onRestart because
-      //    that creates a new Engine in main.ts which crashes (loadingScene is gone)
+      // On Replay: reset in-place ONLY — never call options.onRestart because
+      // that creates a new Engine in main.ts which crashes (loadingScene is gone)
       hs.onRestartCallback = () => {
         this.resetForReplay();
       };
@@ -363,8 +347,8 @@ export class Engine {
 
     if (this.cockpit)         this.cockpit.update(delta);
     if (this.transitionPlane) this.transitionPlane.update();
-    if (this.world)   this.world.update(delta, this.cockpit.model?.position, this.cockpit.model ?? undefined);
-    if (this.enemies) this.enemies.update(delta);
+    if (this.world)           this.world.update(delta, this.cockpit.model?.position, this.cockpit.model ?? undefined);
+    if (this.enemies)         this.enemies.update(delta);
     this.projectileManager.update(delta);
     this.combatSystem.update(delta);
 
@@ -375,6 +359,9 @@ export class Engine {
       this.mobileOptimized = true;
     }
 
+    // levelStarted=0 → start level 1
+    // levelStarted=1 → level 1 running (victory fires via missionController.onVictory)
+    // levelStarted=2 → level 2 running
     if (!this.levelStarted && this.cockpit.model) {
       if (this.missionController) {
         this.missionController.start();
@@ -388,11 +375,8 @@ export class Engine {
     window.cancelAnimationFrame(this.animationFrameId);
     window.removeEventListener('resize', this.onWindowResize);
 
-    // Clean up mission timers
-    if (this.missionController) {
-      this.missionController.reset();
-      this.missionController = null;
-    }
+    if (this.missionController)  { this.missionController.reset();  this.missionController  = null; }
+    if (this.missionController2) { this.missionController2.reset(); this.missionController2 = null; }
 
     if (this.transitionPlane)      { this.transitionPlane.dispose(); this.transitionPlane = null; }
     if (this.world)                this.world.dispose();
@@ -424,14 +408,8 @@ export class Engine {
         const m = mat as THREE.MeshStandardMaterial;
         if (!m.isMeshStandardMaterial) continue;
 
-        if (m.normalMap) {
-          m.normalMap.dispose();
-          m.normalMap = null;
-        }
-        if (m.aoMap) {
-          m.aoMap.dispose();
-          m.aoMap = null;
-        }
+        if (m.normalMap) { m.normalMap.dispose();  m.normalMap = null; }
+        if (m.aoMap)     { m.aoMap.dispose();       m.aoMap     = null; }
         m.needsUpdate = true;
       }
     });
