@@ -802,6 +802,7 @@ export class CombatSystem {
     // Just 3 sprites + setTimeout removal. Zero rAF = zero crash risk.
     // ══════════════════════════════════════════════════════════════
     if (this.isMobile) {
+      return;
       const flashTexture = this.getOrCreateTexture('flash', () => this.createFlashTexture());
 
       const layers = [
