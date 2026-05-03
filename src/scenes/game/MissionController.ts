@@ -16,6 +16,7 @@ export class MissionController {
   private enemyKilledCount = 0;
   private totalInWaveKilled = 0;
   private pendingTimers: ReturnType<typeof setTimeout>[] = [];
+  private victoryDeclared = false;
 
   constructor(private engine: Engine) {}
 
@@ -126,7 +127,7 @@ export class MissionController {
     }
     else if (this.state === MissionState.MANSOURA_BATTLE) {
       this.enemyKilledCount++;
-      if (this.enemyKilledCount < 3) { //was 6
+      if (this.enemyKilledCount < 1) { //was 6
         this.later(() => this.spawnWave(1), 2000);
       } else {
         this.later(() => this.victory(), 3000);
@@ -233,10 +234,16 @@ export class MissionController {
   }
 
   private victory() {
+    if (this.victoryDeclared) return;
+    this.victoryDeclared = true;
+
     this.engine.notif.show({
       type: 'success', title: 'نصر مبيناً',
       msg: 'تم دحر العدو بنجاح في المنصورة! انتظر الأوامر القادمة...',
       duration: 10000
     });
+  }
+  public getMissionState() {
+    return this.victoryDeclared;
   }
 }

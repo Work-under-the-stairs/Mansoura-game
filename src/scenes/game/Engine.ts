@@ -35,7 +35,7 @@ export class Engine {
   private onExitCallback: (() => void) | null = null;
   private readyCallback: (() => void) | null = null;
   private animationStarted = false;
-  private levelStarted = false;
+  private levelStarted = 0;
 
   // ✅ Keep a reference so we can reset it on replay
   private missionController: MissionController | null = null;
@@ -249,7 +249,7 @@ export class Engine {
     }
 
     // 6. Restart mission — levelStarted=false lets animate() call start() next frame
-    this.levelStarted = false;
+    this.levelStarted = 0;
     console.log('[Engine] Reset complete — mission restarting.');
   }
 
@@ -357,8 +357,13 @@ export class Engine {
     if (!this.levelStarted && this.cockpit.model) {
       if (this.missionController) {
         this.missionController.start();
-        this.levelStarted = true;
+        this.levelStarted = 1;
       }
+    }
+    if(this.levelStarted === 1 && this.missionController?.getMissionState()) {
+      // this.missionController.start();
+      console.log("Mission state indicates victory, starting next level...");
+      this.levelStarted = 2;
     }
   };
 
