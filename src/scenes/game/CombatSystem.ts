@@ -7,41 +7,33 @@ import { NotificationSystem } from './NotificationSystem';
 // ───────────────────────────────────────────────────────────────
 //  SoundSystem  — lightweight audio manager
 // ───────────────────────────────────────────────────────────────
-// ── Sound clip definition ─────────────────────────────────────
 interface SoundClip {
-  file:     string;  // path to audio file in /public/sounds/
-  start:    number;  // ✅ start time in seconds within the file
-  duration: number;  // ✅ how long to play in seconds
+  file: string;
+  start: number;
+  duration: number;
 }
 
 class SoundSystem {
-  private ctx:    AudioContext | null = null;
+  private ctx: AudioContext | null = null;
   private sounds: Map<string, AudioBuffer> = new Map();
 
-  // ═══════════════════════════════════════════════════════════
-  //  ✅ CONFIGURE YOUR SOUNDS HERE
-  //  file     → path inside /public/
-  //  start    → where in the file to start (seconds)
-  //  duration → how long to play (seconds)
-  // ═══════════════════════════════════════════════════════════
   private readonly clips: Record<string, SoundClip> = {
     bullet_hit: {
-      file:     '/sounds/foisal72-gun-fire-346766.mp3',
-      start:    0.0,   // ← change this  e.g. 1.2
-      duration: 1.2,   // ← change this  e.g. 0.4
+      file: '/sounds/foisal72-gun-fire-346766.mp3',
+      start: 0.0,
+      duration: 1.2,
     },
     missile_hit: {
-      file:     '/sounds/voicebosch-missile-explosion-168600.mp3',
-      start:    0.0,   // ← change this  e.g. 3.8
-      duration: 1.5,   // ← change this  e.g. 0.8
+      file: '/sounds/voicebosch-missile-explosion-168600.mp3',
+      start: 0.0,
+      duration: 1.5,
     },
     explosion: {
-      file:     '/sounds/dragon-studio-nuclear-explosion-386181.mp3',
-      start:    0.0,   // ← change this  e.g. 6.0
-      duration: 1,   // ← change this  e.g. 1.5
+      file: '/sounds/dragon-studio-nuclear-explosion-386181.mp3',
+      start: 0.0,
+      duration: 1,
     },
   };
-  // ═══════════════════════════════════════════════════════════
 
   constructor() {
     const resume = () => {
@@ -52,13 +44,12 @@ class SoundSystem {
         this.ctx.resume();
       }
     };
-    window.addEventListener('click',   resume, { once: true });
+    window.addEventListener('click', resume, { once: true });
     window.addEventListener('keydown', resume, { once: true });
   }
 
   private async loadAll(): Promise<void> {
-    // Deduplicate — if two clips share the same file, load it once
-    const fileMap = new Map<string, string>(); // file → key
+    const fileMap = new Map<string, string>();
     for (const [key, clip] of Object.entries(this.clips)) {
       if (!fileMap.has(clip.file)) fileMap.set(clip.file, key);
     }
@@ -66,8 +57,8 @@ class SoundSystem {
     const buffers = new Map<string, AudioBuffer>();
     for (const [file] of fileMap) {
       try {
-        const res     = await fetch(file);
-        const arr     = await res.arrayBuffer();
+        const res = await fetch(file);
+        const arr = await res.arrayBuffer();
         const decoded = await this.ctx!.decodeAudioData(arr);
         buffers.set(file, decoded);
       } catch (e) {
@@ -75,62 +66,54 @@ class SoundSystem {
       }
     }
 
-    // Map each clip key to its decoded buffer
     for (const [key, clip] of Object.entries(this.clips)) {
       const buf = buffers.get(clip.file);
       if (buf) this.sounds.set(key, buf);
     }
   }
 
-  /**
-   * Play a specific clip (uses start + duration from clips config).
-   * @param key      Clip key: 'bullet_hit' | 'missile_hit' | 'explosion'
-   * @param volume   0–1  (default 1)
-   * @param pitchVar Random pitch shift ± fraction (default 0.08)
-   */
   public play(key: string, volume = 1.0, pitchVar = 0.08): void {
     if (!this.ctx || !this.sounds.has(key)) return;
 
-    const clip   = this.clips[key];
-    const buf    = this.sounds.get(key)!;
+    const clip = this.clips[key];
+    const buf = this.sounds.get(key)!;
     const source = this.ctx.createBufferSource();
-    const gain   = this.ctx.createGain();
+    const gain = this.ctx.createGain();
 
-    source.buffer             = buf;
+    source.buffer = buf;
     source.playbackRate.value = 1 + (Math.random() * 2 - 1) * pitchVar;
-    gain.gain.value           = volume;
+    gain.gain.value = volume;
 
     source.connect(gain);
     gain.connect(this.ctx.destination);
 
-    // ✅ start(when, offset, duration) — plays only the configured slice
     source.start(0, clip.start, clip.duration);
   }
 }
 
 // ───────────────────────────────────────────────────────────────
-//  HealthSystem  (self-contained — owns HUD DOM)
+//  HealthSystem
 // ───────────────────────────────────────────────────────────────
 class HealthSystem {
-  public hp     = 100;
-  public maxHp  = 100;
+  public hp = 100;
+  public maxHp = 100;
   public isDead = false;
 
-  public shakeTimer     = 0;
+  public shakeTimer = 0;
   public shakeIntensity = 0;
   private readonly SHAKE_DURATION = 0.40;
 
-  private cameraBasePos    = new THREE.Vector3();
+  private cameraBasePos = new THREE.Vector3();
   private cameraBasePosSet = false;
 
-  private hudFill:    HTMLElement;
-  private hudLabel:   HTMLElement;
-  private hudPct:     HTMLElement;
+  private hudFill: HTMLElement;
+  private hudLabel: HTMLElement;
+  private hudPct: HTMLElement;
   private hitOverlay: HTMLElement;
-  private deathEl:    HTMLElement;
+  private deathEl: HTMLElement;
 
   public onRestartCallback?: () => void;
-  public onExitCallback?:    () => void;
+  public onExitCallback?: () => void;
 
   constructor(
     private cockpit: Cockpit,
@@ -139,23 +122,21 @@ class HealthSystem {
     onExitCallback?: () => void,
   ) {
     this.onRestartCallback = onRestartCallback;
-    this.onExitCallback    = onExitCallback;
+    this.onExitCallback = onExitCallback;
     this.buildHUD();
-    this.hudFill    = document.getElementById('cs-hp-fill')!;
-    this.hudLabel   = document.getElementById('cs-hp-label')!;
-    this.hudPct     = document.getElementById('cs-hp-pct')!;
+    this.hudFill = document.getElementById('cs-hp-fill')!;
+    this.hudLabel = document.getElementById('cs-hp-label')!;
+    this.hudPct = document.getElementById('cs-hp-pct')!;
     this.hitOverlay = document.getElementById('cs-hit-overlay')!;
-    this.deathEl    = document.getElementById('cs-death')!;
+    this.deathEl = document.getElementById('cs-death')!;
   }
-
-  // ── Public ────────────────────────────────────────────────────
 
   public takeDamage(amount: number): void {
     if (this.isDead) return;
     this.hp = Math.max(0, this.hp - amount);
     this.refreshBar();
     this.flashScreen();
-    this.shakeTimer     = this.SHAKE_DURATION;
+    this.shakeTimer = this.SHAKE_DURATION;
     this.shakeIntensity = amount * 0.00008;
     if (this.hp <= 0) this.onDeath();
   }
@@ -172,7 +153,7 @@ class HealthSystem {
     }
 
     this.shakeTimer -= delta;
-    const t   = Math.max(0, this.shakeTimer / this.SHAKE_DURATION);
+    const t = Math.max(0, this.shakeTimer / this.SHAKE_DURATION);
     const mag = this.shakeIntensity * t * t;
 
     if (cam) {
@@ -191,15 +172,15 @@ class HealthSystem {
   }
 
   public reset(): void {
-    this.hp               = this.maxHp;
-    this.isDead           = false;
-    this.shakeTimer       = 0;
-    this.shakeIntensity   = 0;
+    this.hp = this.maxHp;
+    this.isDead = false;
+    this.shakeTimer = 0;
+    this.shakeIntensity = 0;
     this.cameraBasePosSet = false;
     this.refreshBar();
     this.deathEl.classList.remove('cs-visible');
-    this.deathEl.style.visibility    = 'hidden';
-    this.deathEl.style.opacity       = '0';
+    this.deathEl.style.visibility = 'hidden';
+    this.deathEl.style.opacity = '0';
     this.deathEl.style.pointerEvents = 'none';
   }
 
@@ -207,25 +188,23 @@ class HealthSystem {
     document.getElementById('cs-hud-root')?.remove();
   }
 
-  // ── Private ───────────────────────────────────────────────────
-
   private refreshBar(): void {
-    const pct    = this.hp / this.maxHp;
+    const pct = this.hp / this.maxHp;
     const pctInt = Math.round(pct * 100);
     this.hudFill.style.width = `${pct * 100}%`;
-    this.hudPct.textContent  = `${pctInt}%`;
+    this.hudPct.textContent = `${pctInt}%`;
     if (pct > 0.5) {
       this.hudFill.style.background = '#556b2f';
-      this.hudLabel.style.color     = '#c9a84c';
-      this.hudPct.style.color       = '#c9a84c';
+      this.hudLabel.style.color = '#c9a84c';
+      this.hudPct.style.color = '#c9a84c';
     } else if (pct > 0.25) {
       this.hudFill.style.background = '#7a6a1a';
-      this.hudLabel.style.color     = '#e8c84a';
-      this.hudPct.style.color       = '#e8c84a';
+      this.hudLabel.style.color = '#e8c84a';
+      this.hudPct.style.color = '#e8c84a';
     } else {
       this.hudFill.style.background = '#8B1A1A';
-      this.hudLabel.style.color     = '#c9a84c';
-      this.hudPct.style.color       = '#ff6b6b';
+      this.hudLabel.style.color = '#c9a84c';
+      this.hudPct.style.color = '#ff6b6b';
     }
   }
 
@@ -234,46 +213,37 @@ class HealthSystem {
     setTimeout(() => { this.hitOverlay.style.opacity = '0'; }, 100);
   }
 
-  // Replace ONLY the onDeath() method inside HealthSystem with this version
+  private onDeath(): void {
+    if (this.isDead) return;
 
-private onDeath(): void {
-  // Prevent duplicate triggers
-  if (this.isDead) return;
+    this.isDead = true;
+    this.hp = 0;
+    this.refreshBar();
 
-  this.isDead = true;
+    this.shakeTimer = 3.0;
+    this.shakeIntensity = 0.0006;
 
-  // Force health to zero visually
-  this.hp = 0;
-  this.refreshBar();
-
-  // Strong crash shake effect
-  this.shakeTimer = 3.0;
-  this.shakeIntensity = 0.0006;
-
-  // Always show redeploy screen immediately
-  this.deathEl.style.visibility = 'visible';
-  this.deathEl.style.opacity = '0';
-  this.deathEl.style.pointerEvents = 'all';
-
-  // Ensure DOM paints first, then animate in
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      this.deathEl.classList.add('cs-visible');
-      this.deathEl.style.opacity = '1';
-    });
-  });
-
-  // Safety fallback: if CSS class fails, still show after short delay
-  setTimeout(() => {
     this.deathEl.style.visibility = 'visible';
-    this.deathEl.style.opacity = '1';
+    this.deathEl.style.opacity = '0';
     this.deathEl.style.pointerEvents = 'all';
-    this.deathEl.classList.add('cs-visible');
-  }, 120);
 
-  // Trigger external death callback (sound / notification)
-  this.onDeathCallback?.();
-}
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        this.deathEl.classList.add('cs-visible');
+        this.deathEl.style.opacity = '1';
+      });
+    });
+
+    setTimeout(() => {
+      this.deathEl.style.visibility = 'visible';
+      this.deathEl.style.opacity = '1';
+      this.deathEl.style.pointerEvents = 'all';
+      this.deathEl.classList.add('cs-visible');
+    }, 120);
+
+    this.onDeathCallback?.();
+  }
+
   private buildHUD(): void {
     document.getElementById('cs-hud-root')?.remove();
 
@@ -289,8 +259,6 @@ private onDeath(): void {
         pointer-events: none;
         visibility: hidden;
       }
-
-      /* ── Health bar ── */
       #cs-hull-hud {
         position: fixed;
         top: 28px;
@@ -344,8 +312,6 @@ private onDeath(): void {
         font-size: 11px; font-weight: 700; color: #c9a84c;
         min-width: 36px; text-align: center;
       }
-
-      /* ── Hit vignette ── */
       #cs-hit-overlay {
         position: fixed; inset: 0; z-index: 9998;
         opacity: 0; transition: opacity .15s ease;
@@ -353,8 +319,6 @@ private onDeath(): void {
           ellipse at center, transparent 40%, rgba(139,26,26,.45) 100%
         );
       }
-
-      /* ── Death screen ── */
       #cs-death {
         position: fixed; inset: 0; z-index: 10000;
         display: flex; align-items: center; justify-content: center;
@@ -418,9 +382,7 @@ private onDeath(): void {
         font-size: 9px; letter-spacing: 3px; color: rgba(255,255,255,.35);
       }
     </style>
-
     <div id="cs-hit-overlay"></div>
-
     <div id="cs-hull-hud">
       <div id="cs-hp-tag"><span id="cs-hp-label">HULL</span></div>
       <div id="cs-hp-bar-wrap">
@@ -429,7 +391,6 @@ private onDeath(): void {
       </div>
       <div id="cs-hp-pct-wrap"><span id="cs-hp-pct">100%</span></div>
     </div>
-
     <div id="cs-death">
       <div id="cs-death-card">
         <div id="cs-warning">AIRCRAFT STATUS</div>
@@ -451,92 +412,91 @@ private onDeath(): void {
 }
 
 // ───────────────────────────────────────────────────────────────
-//  Enemy projectile
+//  Enemy projectile interface
 // ───────────────────────────────────────────────────────────────
 interface EnemyShot {
-  mesh:      THREE.Object3D;
-  velocity:  THREE.Vector3;
-  life:      number;
+  mesh: THREE.Object3D;
+  velocity: THREE.Vector3;
+  life: number;
   isMissile: boolean;
-  owner:     THREE.Object3D;
+  owner: THREE.Object3D;
 }
 
 // ───────────────────────────────────────────────────────────────
 //  CombatSystem
 // ───────────────────────────────────────────────────────────────
 export class CombatSystem {
-
   public readonly health: HealthSystem;
-
-  // ✅ Sound system instance
   private readonly sound = new SoundSystem();
 
-  private readonly ENGAGE_DIST        = 120_000;
-  private readonly BULLET_SPEED       = 12_000;
-  private readonly MISSILE_SPEED      =  5_000;
-  private readonly BULLET_LIFE        = 10.0;
-  private readonly MISSILE_LIFE       = 12.0;
-  private readonly BULLET_DAMAGE      = 1;
-  private readonly MISSILE_DAMAGE     = 4;
-  private readonly HIT_R_BULLET       = 500;
-  private readonly HIT_R_MISSILE      = 500;
+  private readonly ENGAGE_DIST = 120_000;
+  private readonly BULLET_SPEED = 12_000;
+  private readonly MISSILE_SPEED = 5_000;
+  private readonly BULLET_LIFE = 10.0;
+  private readonly MISSILE_LIFE = 12.0;
+  private readonly BULLET_DAMAGE = 1;
+  private readonly MISSILE_DAMAGE = 4;
+  private readonly HIT_R_BULLET = 500;
+  private readonly HIT_R_MISSILE = 500;
   private readonly SHOOT_INTERVAL_MIN = 2.0;
   private readonly SHOOT_INTERVAL_MAX = 5.0;
 
-  private readonly PLAYER_BULLET_DMG   = 25;
-  private readonly PLAYER_MISSILE_DMG  = 50;
-  private readonly ENEMY_HIT_R_BULLET  = 9000;
+  private readonly PLAYER_BULLET_DMG = 25;
+  private readonly PLAYER_MISSILE_DMG = 50;
+  private readonly ENEMY_HIT_R_BULLET = 9000;
   private readonly ENEMY_HIT_R_MISSILE = 4000;
 
-  private readonly bulletGeo:   THREE.CylinderGeometry;
-  private readonly bulletMat:   THREE.MeshBasicMaterial;
+  private readonly bulletGeo: THREE.CylinderGeometry;
+  private readonly bulletMat: THREE.MeshBasicMaterial;
   private readonly missileBody: THREE.CylinderGeometry;
-  private readonly missileMat:  THREE.MeshBasicMaterial;
+  private readonly missileMat: THREE.MeshBasicMaterial;
   private readonly missileGlow: THREE.SpriteMaterial;
 
-  private shots:         EnemyShot[] = [];
-  private cooldowns      = new Map<string, number>();
+  private shots: EnemyShot[] = [];
+  private cooldowns = new Map<string, number>();
   private shootIntervals = new Map<string, number>();
 
+  // Cache for explosion textures
+  private cachedTextures: Map<string, THREE.CanvasTexture> = new Map();
+
   constructor(
-    private scene:             THREE.Scene,
-    private camera:            THREE.PerspectiveCamera,
-    private cockpit:           Cockpit,
-    private enemyManager:      EnemyManager,
+    private scene: THREE.Scene,
+    private camera: THREE.PerspectiveCamera,
+    private cockpit: Cockpit,
+    private enemyManager: EnemyManager,
     private projectileManager: ProjectileManager,
-    private notifications:     NotificationSystem,
+    private notifications: NotificationSystem,
     private onRestartCallback?: () => void,
-    private onExitCallback?:    () => void,
+    private onExitCallback?: () => void,
   ) {
     this.health = new HealthSystem(
       cockpit,
       () => {
         this.notifications.show({
-          type:     'warn',
-          title:    'تدمير الطائرة',
-          msg:      'فقدان الأنظمة الحيوية. فشل المهمة.',
+          type: 'warn',
+          title: 'تدمير الطائرة',
+          msg: 'فقدان الأنظمة الحيوية. فشل المهمة.',
           duration: 8000,
         });
-        // ✅ Play explosion sound when player dies
         this.sound.play('explosion', 1.0, 0.04);
       },
       onRestartCallback,
       onExitCallback,
     );
 
-    this.bulletGeo  = new THREE.CylinderGeometry(2.5, 2.5, 28, 6);
+    this.bulletGeo = new THREE.CylinderGeometry(2.5, 2.5, 28, 6);
     this.bulletGeo.rotateX(Math.PI / 2);
-    this.bulletMat  = new THREE.MeshBasicMaterial({ color: 0xff5500 });
+    this.bulletMat = new THREE.MeshBasicMaterial({ color: 0xff5500 });
 
     this.missileBody = new THREE.CylinderGeometry(5, 5, 70, 8);
     this.missileBody.rotateX(Math.PI / 2);
-    this.missileMat  = new THREE.MeshBasicMaterial({ color: 0xff2200 });
+    this.missileMat = new THREE.MeshBasicMaterial({ color: 0xff2200 });
     this.missileGlow = new THREE.SpriteMaterial({
-      color:       0xff4400,
+      color: 0xff4400,
       transparent: true,
-      opacity:     0.55,
-      blending:    THREE.AdditiveBlending,
-      depthWrite:  false,
+      opacity: 0.55,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
     });
   }
 
@@ -588,6 +548,12 @@ export class CombatSystem {
     this.missileMat.dispose();
     this.missileGlow.dispose();
     this.health.dispose();
+    
+    // Dispose cached textures
+    for (const texture of this.cachedTextures.values()) {
+      texture.dispose();
+    }
+    this.cachedTextures.clear();
   }
 
   // ── Enemy shooting AI ─────────────────────────────────────────
@@ -616,19 +582,19 @@ export class CombatSystem {
   }
 
   private fireEnemyShot(
-    enemy:     THREE.Object3D,
+    enemy: THREE.Object3D,
     targetPos: THREE.Vector3,
-    dist:      number,
+    dist: number,
   ): void {
     const origin = enemy.position.clone();
 
-    const travelTime     = dist / this.BULLET_SPEED;
-    const playerFwd      = this.cockpit.model
+    const travelTime = dist / this.BULLET_SPEED;
+    const playerFwd = this.cockpit.model
       ? new THREE.Vector3(0, 0, -1).applyQuaternion(this.cockpit.model.quaternion)
       : new THREE.Vector3();
-    const speed          = this.cockpit.currentSpeed ?? 255;
+    const speed = this.cockpit.currentSpeed ?? 255;
     const playerVelocity = playerFwd.multiplyScalar(speed);
-    const aimPos         = targetPos.clone().addScaledVector(playerVelocity, travelTime);
+    const aimPos = targetPos.clone().addScaledVector(playerVelocity, travelTime);
 
     aimPos.x += (Math.random() - 0.5) * dist * 0.02;
 
@@ -638,16 +604,16 @@ export class CombatSystem {
     dir.normalize();
 
     const isMissile = dist < 40_000 && Math.random() < 0.20;
-    const mesh      = isMissile ? this.buildMissileMesh(dir) : this.buildBulletMesh(dir);
+    const mesh = isMissile ? this.buildMissileMesh(dir) : this.buildBulletMesh(dir);
     mesh.position.copy(origin);
     this.scene.add(mesh);
 
     this.shots.push({
       mesh,
       velocity: dir.clone().multiplyScalar(isMissile ? this.MISSILE_SPEED : this.BULLET_SPEED),
-      life:     isMissile ? this.MISSILE_LIFE : this.BULLET_LIFE,
+      life: isMissile ? this.MISSILE_LIFE : this.BULLET_LIFE,
       isMissile,
-      owner:    enemy,
+      owner: enemy,
     });
   }
 
@@ -716,7 +682,7 @@ export class CombatSystem {
       );
 
       if (s.isMissile) {
-        const fl      = 0.8 + 0.4 * Math.sin(t * 38);
+        const fl = 0.8 + 0.4 * Math.sin(t * 38);
         const exhaust = s.mesh.children[2] as THREE.Sprite | undefined;
         if (exhaust) {
           (exhaust.material as THREE.SpriteMaterial).opacity = 0.38 * fl;
@@ -725,14 +691,13 @@ export class CombatSystem {
       }
 
       const dist = s.mesh.position.distanceTo(cockpitPos);
-      const hitR  = s.isMissile ? this.HIT_R_MISSILE : this.HIT_R_BULLET;
+      const hitR = s.isMissile ? this.HIT_R_MISSILE : this.HIT_R_BULLET;
 
       if (dist < hitR) {
         const dmg = s.isMissile ? this.MISSILE_DAMAGE : this.BULLET_DAMAGE;
         this.health.takeDamage(dmg);
         dead.push(s);
 
-        // ✅ Play hit sound — missile is heavier than bullet
         if (s.isMissile) {
           this.sound.play('missile_hit', 0.9, 0.05);
         } else {
@@ -740,9 +705,9 @@ export class CombatSystem {
         }
 
         this.notifications.show({
-          type:     'warn',
-          title:    s.isMissile ? 'إصابة بصاروخ' : 'إصابة برصاص',
-          msg:      s.isMissile
+          type: 'warn',
+          title: s.isMissile ? 'إصابة بصاروخ' : 'إصابة برصاص',
+          msg: s.isMissile
             ? 'صاروخ معادٍ أصاب الطائرة. تم رصد أضرار هيكلية.'
             : `إصابة مباشرة — سلامة الهيكل ${Math.round(this.health.hp)}%`,
           duration: 3000,
@@ -776,8 +741,6 @@ export class CombatSystem {
 
   private explodeAndRemove(enemy: THREE.Object3D): void {
     this.spawnExplosion(enemy.position.clone());
-
-    // ✅ Play explosion sound when enemy dies
     this.sound.play('explosion', 0.85, 0.08);
 
     const toRemove = this.shots.filter(s => s.owner === enemy);
@@ -789,9 +752,9 @@ export class CombatSystem {
     this.startDeathFall(enemy);
 
     this.notifications.show({
-      type:     'kill',
-      title:    'إسقاط هدف',
-      msg:      'تم تدمير الطائرة المعادية وتقليل التهديد الجوي.',
+      type: 'kill',
+      title: 'إسقاط هدف',
+      msg: 'تم تدمير الطائرة المعادية وتقليل التهديد الجوي.',
       duration: 3500,
     });
 
@@ -802,10 +765,10 @@ export class CombatSystem {
 
   private startDeathFall(enemy: THREE.Object3D): void {
     enemy.userData.isDead = true;
-    const FALL_DURATION   = 2.0;
-    const FALL_SPEED      = 8_000;
-    const SPIN_SPEED      = 2.5;
-    let   elapsed         = 0;
+    const FALL_DURATION = 2.0;
+    const FALL_SPEED = 8_000;
+    const SPIN_SPEED = 2.5;
+    let elapsed = 0;
 
     const tick = (delta: number) => {
       elapsed += delta;
@@ -822,50 +785,501 @@ export class CombatSystem {
     requestAnimationFrame(() => tick(1 / 60));
   }
 
-  private spawnExplosion(pos: THREE.Vector3): void {
-    const layers = [
-      { color: 0xffffff, size: 400,  opacity: 1.0, speed: 0.5 },
-      { color: 0xffdd00, size: 700,  opacity: 0.9, speed: 0.7 },
-      { color: 0xff6600, size: 900,  opacity: 0.8, speed: 0.9 },
-      { color: 0xff2200, size: 600,  opacity: 0.7, speed: 1.1 },
-      { color: 0x331100, size: 1100, opacity: 0.5, speed: 0.6 },
-      { color: 0x888888, size: 800,  opacity: 0.3, speed: 0.4 },
-    ];
+  // ── ENHANCED EXPLOSION SYSTEM ─────────────────────────────────
 
-    for (const layer of layers) {
+  private spawnExplosion(pos: THREE.Vector3): void {
+  const flashTexture = this.getOrCreateTexture('flash', () => this.createFlashTexture());
+  const smokeTexture = this.getOrCreateTexture('smoke', () => this.createSmokeTexture());
+  const debrisTexture = this.getOrCreateTexture('debris', () => this.createDebrisTexture());
+
+  // 🔥 MAIN FLASH - ABSOLUTELY MASSIVE
+  const flashLayers = [
+    { color: 0xffffff, size: 2500, opacity: 1.0, life: 0.18, scaleMulti: 8.0 },    // Enormous white core
+    { color: 0xffcc88, size: 3800, opacity: 0.95, life: 0.25, scaleMulti: 9.0 },   // Gigantic orange
+    { color: 0xff8800, size: 5200, opacity: 0.85, life: 0.35, scaleMulti: 10.0 },  // Titan orange-red
+    { color: 0xff4400, size: 7000, opacity: 0.7, life: 0.48, scaleMulti: 11.0 },   // Colossal red
+    { color: 0xcc2200, size: 9000, opacity: 0.5, life: 0.65, scaleMulti: 12.0 },   // Monstrous dark red
+    { color: 0xaa1100, size: 12000, opacity: 0.3, life: 0.85, scaleMulti: 13.0 },  // Epic outer glow
+  ];
+
+  // Fire core with additive blending - SUPER MASSIVE
+  for (const layer of flashLayers) {
+    const mat = new THREE.SpriteMaterial({
+      map: flashTexture,
+      color: layer.color,
+      transparent: true,
+      opacity: layer.opacity,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+
+    const sprite = new THREE.Sprite(mat);
+    sprite.position.copy(pos);
+    const startScale = layer.size * 0.35; // Even larger base scale
+    sprite.scale.setScalar(startScale);
+    this.scene.add(sprite);
+
+    let elapsed = 0;
+
+    const tick = () => {
+      elapsed += 0.016;
+      const t = Math.min(elapsed / layer.life, 1);
+
+      if (t >= 1) {
+        this.scene.remove(sprite);
+        mat.dispose();
+        return;
+      }
+
+      // Explosive expansion
+      const scaleMulti = 1 + t * (layer.scaleMulti - 1);
+      sprite.scale.setScalar(startScale * scaleMulti);
+      
+      // Quick opacity drop but visible longer
+      mat.opacity = layer.opacity * (1 - Math.pow(t, 1.5));
+      
+      // Dramatic upward movement
+      sprite.position.y += 45 * (1 - t);
+
+      requestAnimationFrame(tick);
+    };
+
+    requestAnimationFrame(tick);
+  }
+
+  // 💨 SMOKE - COLOSSAL CLOUDS
+  const smokeLayers = [
+    { color: 0x2a1a0a, size: 4000, opacity: 0.65, life: 1.5, riseSpeed: 6.0, drift: 2.5, count: 5 },
+    { color: 0x4a3a2a, size: 6000, opacity: 0.55, life: 2.0, riseSpeed: 5.0, drift: 2.0, count: 5 },
+    { color: 0x6a5a4a, size: 8500, opacity: 0.45, life: 2.6, riseSpeed: 4.0, drift: 1.5, count: 5 },
+    { color: 0x8a7a6a, size: 11000, opacity: 0.35, life: 3.2, riseSpeed: 3.0, drift: 1.2, count: 5 },
+    { color: 0xaa9a8a, size: 14000, opacity: 0.25, life: 4.0, riseSpeed: 2.0, drift: 0.8, count: 4 },
+  ];
+
+  for (const layer of smokeLayers) {
+    for (let s = 0; s < layer.count; s++) {
       const mat = new THREE.SpriteMaterial({
-        color:       layer.color,
+        map: smokeTexture,
+        color: layer.color,
         transparent: true,
-        opacity:     layer.opacity,
-        blending:    (layer.color === 0x331100 || layer.color === 0x888888)
-                       ? THREE.NormalBlending : THREE.AdditiveBlending,
-        depthWrite:  false,
+        opacity: layer.opacity,
+        blending: THREE.NormalBlending,
+        depthWrite: false,
       });
+
+      const angle = Math.random() * Math.PI * 2;
+      const radius = (Math.random() - 0.5) * 1200; // Massive spread
+      const offsetX = Math.cos(angle) * radius;
+      const offsetZ = Math.sin(angle) * radius;
+      
       const sprite = new THREE.Sprite(mat);
-      sprite.position.copy(pos);
-      sprite.scale.setScalar(layer.size * 0.3);
+      sprite.position.copy(pos.clone().add(new THREE.Vector3(offsetX, Math.random() * 300, offsetZ)));
+      sprite.scale.setScalar(layer.size * 0.15 * (0.5 + Math.random() * 1.0));
       this.scene.add(sprite);
 
-      const targetSize = layer.size;
-      const duration   = 0.55 + layer.speed * 0.2;
-      let   elapsed    = 0;
+      let elapsed = 0;
+      const driftX = (Math.random() - 0.5) * layer.drift * 2.0;
+      const driftZ = (Math.random() - 0.5) * layer.drift * 2.0;
+      const rotationSpeed = (Math.random() - 0.5) * 0.12;
 
       const tick = () => {
         elapsed += 0.016;
-        const t = elapsed / duration;
-        if (t >= 1) { this.scene.remove(sprite); mat.dispose(); return; }
-        sprite.scale.setScalar(targetSize * (1 - Math.pow(1 - t, 2)));
-        mat.opacity = layer.opacity * (1 - t * t);
+        const t = Math.min(elapsed / layer.life, 1);
+
+        if (t >= 1) {
+          this.scene.remove(sprite);
+          mat.dispose();
+          return;
+        }
+
+        // Massive expansion
+        const scaleFactor = 0.2 + t * 3.5;
+        sprite.scale.setScalar(layer.size * 0.15 * scaleFactor);
+        
+        // Fast rising mushroom cloud
+        sprite.position.y += layer.riseSpeed * (1 - t * 0.4);
+        sprite.position.x += driftX * (0.2 + t);
+        sprite.position.z += driftZ * (0.2 + t);
+        
+        // Heavy turbulence
+        sprite.position.x += Math.sin(elapsed * 5) * 2.5;
+        sprite.position.z += Math.cos(elapsed * 4) * 2.5;
+        
+        sprite.material.rotation += rotationSpeed;
+        mat.opacity = layer.opacity * (1 - Math.pow(t, 1.4));
+
         requestAnimationFrame(tick);
       };
+
       requestAnimationFrame(tick);
     }
+  }
+
+  // 🔥 FIREBALL PARTICLES - EPIC AMOUNT
+  const fireParticleCount = 180; // Massive increase
+  for (let i = 0; i < fireParticleCount; i++) {
+    const mat = new THREE.SpriteMaterial({
+      map: flashTexture,
+      color: i < fireParticleCount * 0.5 ? 0xffaa44 : 0xff4422,
+      transparent: true,
+      opacity: 0.95,
+      blending: THREE.AdditiveBlending,
+    });
+
+    const sprite = new THREE.Sprite(mat);
+    sprite.position.copy(pos);
+    
+    const angle = Math.random() * Math.PI * 2;
+    const elevation = Math.random() * Math.PI - Math.PI / 2;
+    const speed = 180 + Math.random() * 220; // Extremely fast
+    const vel = new THREE.Vector3(
+      Math.cos(angle) * Math.cos(elevation) * speed,
+      Math.sin(elevation) * speed + 120,
+      Math.sin(angle) * Math.cos(elevation) * speed
+    );
+    
+    // Massive particles
+    sprite.scale.setScalar(25 + Math.random() * 45);
+    this.scene.add(sprite);
+
+    let life = 0;
+    const maxLife = 0.6 + Math.random() * 0.4;
+
+    const tick = () => {
+      life += 0.016;
+      const t = life / maxLife;
+
+      if (t >= 1) {
+        this.scene.remove(sprite);
+        mat.dispose();
+        return;
+      }
+
+      sprite.position.addScaledVector(vel, 0.016);
+      vel.y -= 25; // Strong gravity
+      
+      // Air resistance
+      vel.multiplyScalar(0.96);
+      
+      const scaleFactor = 1 - t * 0.25;
+      sprite.scale.setScalar((25 + Math.random() * 45) * scaleFactor);
+      mat.opacity = 0.95 * (1 - Math.pow(t, 1.6));
+
+      requestAnimationFrame(tick);
+    };
+
+    requestAnimationFrame(tick);
+  }
+
+  // 💥 SHOCKWAVE RINGS - MULTIPLE MASSIVE RINGS
+  const ringCount = 3;
+  for (let r = 0; r < ringCount; r++) {
+    const ringGeo = new THREE.RingGeometry(30 + r * 20, 80 + r * 30, 64);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: r === 0 ? 0xffaa66 : (r === 1 ? 0xff8844 : 0xff6622),
+      transparent: true,
+      opacity: 0.85 - r * 0.15,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+    });
+    
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.position.copy(pos);
+    ring.position.y += 40 + r * 15;
+    ring.lookAt(0, 1, 0);
+    this.scene.add(ring);
+    
+    let ringLife = 0;
+    const ringDelay = r * 0.05;
+    let started = false;
+    
+    const ringTick = () => {
+      if (!started) {
+        ringLife += 0.016;
+        if (ringLife >= ringDelay) {
+          started = true;
+          ringLife = 0;
+        } else {
+          requestAnimationFrame(ringTick);
+          return;
+        }
+      }
+      
+      ringLife += 0.016;
+      const t = ringLife / (0.4 + r * 0.1);
+      
+      if (t >= 1) {
+        this.scene.remove(ring);
+        ringGeo.dispose();
+        ringMat.dispose();
+        return;
+      }
+      
+      // Massive expansion
+      const scale = 1 + t * 20;
+      ring.scale.setScalar(scale);
+      ringMat.opacity = (0.85 - r * 0.15) * (1 - Math.pow(t, 1.4));
+      
+      requestAnimationFrame(ringTick);
+    };
+    requestAnimationFrame(ringTick);
+  }
+
+  // 💨 DEBRIS PARTICLES - MASSIVE AMOUNT
+  const debrisCount = 120; // Huge increase
+  for (let i = 0; i < debrisCount; i++) {
+    const mat = new THREE.SpriteMaterial({
+      map: debrisTexture,
+      color: 0xccaa88,
+      transparent: true,
+      opacity: 0.9,
+    });
+
+    const sprite = new THREE.Sprite(mat);
+    sprite.position.copy(pos);
+    
+    const angle = Math.random() * Math.PI * 2;
+    const elevation = Math.random() * Math.PI - Math.PI / 2;
+    const speed = 100 + Math.random() * 180;
+    const vel = new THREE.Vector3(
+      Math.cos(angle) * Math.cos(elevation) * speed,
+      Math.sin(elevation) * speed + 80,
+      Math.sin(angle) * Math.cos(elevation) * speed
+    );
+    
+    // Large debris chunks
+    sprite.scale.setScalar(12 + Math.random() * 28);
+    this.scene.add(sprite);
+
+    let life = 0;
+    const maxLife = 1.2 + Math.random() * 1.0;
+    let rotation = Math.random() * Math.PI * 2;
+    const rotSpeed = (Math.random() - 0.5) * 0.6;
+
+    const tick = () => {
+      life += 0.016;
+      const t = life / maxLife;
+
+      if (t >= 1) {
+        this.scene.remove(sprite);
+        mat.dispose();
+        return;
+      }
+
+      sprite.position.addScaledVector(vel, 0.016);
+      vel.y -= 28;
+      vel.multiplyScalar(0.97);
+      
+      rotation += rotSpeed;
+      sprite.material.rotation = rotation;
+      
+      const scaleFactor = 1 - t * 0.5;
+      sprite.scale.setScalar((12 + Math.random() * 28) * scaleFactor);
+      mat.opacity = 0.9 * (1 - t);
+
+      requestAnimationFrame(tick);
+    };
+
+    requestAnimationFrame(tick);
+  }
+
+  // 🌟 EXTREME SCREEN SHAKE - CAMERA VIOLENCE
+  if (this.camera) {
+    const originalPos = this.camera.position.clone();
+    let shakeTime = 0;
+    const shakeDuration = 0.6;
+    
+    const shakeTick = () => {
+      shakeTime += 0.016;
+      const t = shakeTime / shakeDuration;
+      
+      if (t >= 1) {
+        this.camera.position.copy(originalPos);
+        return;
+      }
+      
+      // Violent shaking
+      const intensity = (1 - t) * 35;
+      this.camera.position.x = originalPos.x + (Math.random() - 0.5) * intensity;
+      this.camera.position.y = originalPos.y + (Math.random() - 0.5) * intensity * 1.2;
+      this.camera.position.z = originalPos.z + (Math.random() - 0.5) * intensity * 0.7;
+      
+      requestAnimationFrame(shakeTick);
+    };
+    
+    requestAnimationFrame(shakeTick);
+  }
+
+  // 💥 NUCLEAR FLASH - FULL SCREEN WHITE OUT (brief)
+  const whiteOverlay = document.createElement('div');
+  whiteOverlay.style.position = 'fixed';
+  whiteOverlay.style.top = '0';
+  whiteOverlay.style.left = '0';
+  whiteOverlay.style.width = '100%';
+  whiteOverlay.style.height = '100%';
+  whiteOverlay.style.backgroundColor = 'white';
+  whiteOverlay.style.pointerEvents = 'none';
+  whiteOverlay.style.zIndex = '99999';
+  whiteOverlay.style.opacity = '0';
+  whiteOverlay.style.transition = 'opacity 0.05s ease-out';
+  document.body.appendChild(whiteOverlay);
+  
+  // Flash white
+  setTimeout(() => {
+    whiteOverlay.style.opacity = '0.85';
+    setTimeout(() => {
+      whiteOverlay.style.opacity = '0';
+      setTimeout(() => {
+        document.body.removeChild(whiteOverlay);
+      }, 150);
+    }, 60);
+  }, 0);
+
+  // 🌋 MUSHROOM CLOUD STEM (rising column of fire)
+  const stemCount = 30;
+  for (let i = 0; i < stemCount; i++) {
+    const mat = new THREE.SpriteMaterial({
+      map: flashTexture,
+      color: 0xff6644,
+      transparent: true,
+      opacity: 0.7,
+      blending: THREE.AdditiveBlending,
+    });
+
+    const sprite = new THREE.Sprite(mat);
+    const angle = Math.random() * Math.PI * 2;
+    const radius = (Math.random() - 0.5) * 600;
+    sprite.position.copy(pos.clone().add(new THREE.Vector3(
+      Math.cos(angle) * radius,
+      Math.random() * 200,
+      Math.sin(angle) * radius
+    )));
+    sprite.scale.setScalar(80 + Math.random() * 120);
+    this.scene.add(sprite);
+
+    let elapsed = 0;
+    const life = 0.8;
+    const riseSpeed = 45 + Math.random() * 35;
+
+    const tick = () => {
+      elapsed += 0.016;
+      const t = elapsed / life;
+
+      if (t >= 1) {
+        this.scene.remove(sprite);
+        mat.dispose();
+        return;
+      }
+
+      sprite.position.y += riseSpeed * (1 - t * 0.5);
+      sprite.scale.setScalar((80 + Math.random() * 120) * (1 + t * 0.8));
+      mat.opacity = 0.7 * (1 - Math.pow(t, 1.3));
+
+      requestAnimationFrame(tick);
+    };
+
+    requestAnimationFrame(tick);
+  }
+}
+
+  // ── TEXTURE GENERATION HELPERS ─────────────────────────────────
+
+  private getOrCreateTexture(key: string, creator: () => THREE.CanvasTexture): THREE.CanvasTexture {
+    if (!this.cachedTextures.has(key)) {
+      this.cachedTextures.set(key, creator());
+    }
+    return this.cachedTextures.get(key)!;
+  }
+
+  private createFlashTexture(): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d')!;
+
+    ctx.clearRect(0, 0, 64, 64);
+
+    const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+    gradient.addColorStop(0.3, 'rgba(255, 200, 100, 0.9)');
+    gradient.addColorStop(0.6, 'rgba(255, 100, 0, 0.6)');
+    gradient.addColorStop(0.8, 'rgba(255, 50, 0, 0.2)');
+    gradient.addColorStop(1, 'rgba(255, 0, 0, 0)');
+
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 64, 64);
+
+    for (let i = 0; i < 200; i++) {
+      const x = Math.random() * 64;
+      const y = Math.random() * 64;
+      const alpha = Math.random() * 0.3;
+      const dist = Math.hypot(x - 32, y - 32);
+      if (dist < 32) {
+        ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+        ctx.fillRect(x, y, 2, 2);
+      }
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+    return texture;
+  }
+
+  private createSmokeTexture(): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d')!;
+
+    ctx.clearRect(0, 0, 128, 128);
+
+    for (let i = 0; i < 8; i++) {
+      const offsetX = (Math.random() - 0.5) * 40;
+      const offsetY = (Math.random() - 0.5) * 40;
+      const radius = 30 + Math.random() * 25;
+
+      const gradient = ctx.createRadialGradient(
+        64 + offsetX, 64 + offsetY, 0,
+        64 + offsetX, 64 + offsetY, radius
+      );
+      gradient.addColorStop(0, `rgba(100, 100, 100, ${0.3 + Math.random() * 0.2})`);
+      gradient.addColorStop(0.5, `rgba(80, 80, 80, ${0.15 + Math.random() * 0.1})`);
+      gradient.addColorStop(1, 'rgba(60, 60, 60, 0)');
+
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, 128, 128);
+    }
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+    return texture;
+  }
+
+  private createDebrisTexture(): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 16;
+    canvas.height = 16;
+    const ctx = canvas.getContext('2d')!;
+
+    ctx.clearRect(0, 0, 16, 16);
+
+    ctx.fillStyle = 'rgba(80, 60, 40, 0.9)';
+    ctx.fillRect(4, 4, 8, 3);
+    ctx.fillRect(6, 7, 5, 4);
+    ctx.fillRect(3, 10, 7, 3);
+
+    ctx.fillStyle = 'rgba(120, 80, 50, 0.7)';
+    ctx.fillRect(5, 5, 4, 2);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+    return texture;
   }
 
   // ── Helpers ───────────────────────────────────────────────────
 
   private flashEnemy(root: THREE.Object3D, duration: number): void {
-    const end  = Date.now() + duration * 1000;
+    const end = Date.now() + duration * 1000;
     const tick = () => {
       const remaining = (end - Date.now()) / 1000;
       if (remaining <= 0) {
