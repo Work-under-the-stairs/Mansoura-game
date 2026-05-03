@@ -10,6 +10,8 @@ import { CombatSystem } from './CombatSystem';
 import { NotificationSystem } from './NotificationSystem';
 import { applyMobileOptimizations } from '../../utils/MobileOptimizer';
 import { MissionController } from './MissionController';
+import { MissionController2 } from './MissionController2';
+import { TransitionPlane } from './TransitionPlane';
 
 export class Engine {
   private loadingScene: LoadingScene;
@@ -39,7 +41,8 @@ export class Engine {
 
   // ✅ Keep a reference so we can reset it on replay
   private missionController: MissionController | null = null;
-
+  private missionController2: MissionController2 | null = null;
+  public transitionPlane: TransitionPlane | null = null;
   constructor(loadingScene: LoadingScene) {
     this.loadingScene   = loadingScene;
     this.loadingManager = new THREE.LoadingManager();
@@ -124,6 +127,9 @@ export class Engine {
 
     this.enemies = new EnemyManager(this.scene, this.camera, this.cockpit);
 
+    // Companion plane — created here, model loads async via loadingManager
+    this.transitionPlane = new TransitionPlane(this.scene, this.loadingManager, this.cockpit);
+
     this.combatSystem = new CombatSystem(
       this.scene,
       this.camera,
@@ -148,8 +154,24 @@ export class Engine {
     this.hide();
 
     // ✅ Store reference on the instance, not just window
-    this.missionController = new MissionController(this);
+    this.missionController  = new MissionController(this);
+    this.missionController2 = new MissionController2(this);
     (window as any).missionController = this.missionController;
+
+    // Wire level-1 victory → level-2 start
+    this.missionController.onVictory = () => {
+      if (this.levelStarted !== 1) return;
+      console.log('[Engine] Level 1 complete → Level 2 starting');
+      this.enemies.clearAll();
+      const projs = (this.projectileManager as any).projectiles as Array<{mesh:any,alive:boolean}>|undefined;
+      if (projs) { for (const p of projs) { this.scene.remove(p.mesh); p.alive = false; } (this.projectileManager as any).projectiles = []; }
+      console.log('[Engine] Level 1 victory detected. Starting Level 2 sequence.');
+      this.levelStarted = 2;
+      if (this.missionController2) {
+          this.missionController2.reset();
+          this.missionController2.start();
+      }
+    };
   }
 
   // =====================
@@ -248,7 +270,10 @@ export class Engine {
       (this.cockpit as any).currentSpeed = (this.cockpit as any).config.minSpeed;
     }
 
-    // 6. Restart mission — levelStarted=false lets animate() call start() next frame
+    // 6. Snap companion plane back
+    this.transitionPlane?.snapToCockpit();
+
+    // 7. Restart mission
     this.levelStarted = 0;
     console.log('[Engine] Reset complete — mission restarting.');
   }
@@ -340,7 +365,8 @@ export class Engine {
     this.clock.update();
     const delta = this.clock.getDelta();
 
-    if (this.cockpit) this.cockpit.update(delta);
+    if (this.cockpit)         this.cockpit.update(delta);
+    if (this.transitionPlane) this.transitionPlane.update();
     if (this.world)   this.world.update(delta, this.cockpit.model?.position, this.cockpit.model ?? undefined);
     if (this.enemies) this.enemies.update(delta);
     this.projectileManager.update(delta);
@@ -360,11 +386,7 @@ export class Engine {
         this.levelStarted = 1;
       }
     }
-    if(this.levelStarted === 1 && this.missionController?.getMissionState()) {
-      // this.missionController.start();
-      console.log("Mission state indicates victory, starting next level...");
-      this.levelStarted = 2;
-    }
+    // Level transition is driven by missionController.onVictory callback.
   };
 
   public destroy(): void {
@@ -377,6 +399,7 @@ export class Engine {
       this.missionController = null;
     }
 
+    if (this.transitionPlane)      { this.transitionPlane.dispose(); this.transitionPlane = null; }
     if (this.world)                this.world.dispose();
     if (this.mobileControls)       this.mobileControls.destroy();
     if (this.cockpit.weaponSystem) this.cockpit.weaponSystem.dispose();
