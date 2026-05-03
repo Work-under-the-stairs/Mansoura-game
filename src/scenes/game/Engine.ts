@@ -156,6 +156,7 @@ export class Engine {
     this.missionController  = new MissionController(this);
     this.missionController2 = new MissionController2(this);
     (window as any).missionController = this.missionController;
+    (window as any).missionController2 = this.missionController2;
 
     // Wire level-1 victory → level-2 start
     this.missionController.onVictory = () => {

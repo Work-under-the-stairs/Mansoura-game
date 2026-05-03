@@ -762,10 +762,20 @@ export class CombatSystem {
     if ((window as any).missionController) {
       (window as any).missionController.onEnemyKilled();
     }
+    if ((window as any).missionController2) {
+      (window as any).missionController2.onEnemyKilled();
+    }
   }
 
   private startDeathFall(enemy: THREE.Object3D): void {
     enemy.userData.isDead = true;
+
+    // On mobile: skip the rAF death fall animation — just remove after a short delay
+    if (this.isMobile) {
+      setTimeout(() => this.enemyManager.removeEnemy(enemy), 500);
+      return;
+    }
+
     const FALL_DURATION = 2.0;
     const FALL_SPEED = 8_000;
     const SPIN_SPEED = 2.5;
@@ -786,19 +796,67 @@ export class CombatSystem {
     requestAnimationFrame(() => tick(1 / 60));
   }
 
-  // ── ENHANCED EXPLOSION SYSTEM ─────────────────────────────────
-
   private spawnExplosion(pos: THREE.Vector3): void {
+    // ══════════════════════════════════════════════════════════════
+    // MOBILE: Ultra-simple explosion — NO requestAnimationFrame loops
+    // Just 3 sprites + setTimeout removal. Zero rAF = zero crash risk.
+    // ══════════════════════════════════════════════════════════════
+    if (this.isMobile) {
+      const flashTexture = this.getOrCreateTexture('flash', () => this.createFlashTexture());
+
+      const layers = [
+        { color: 0xffffff, size: 2000, opacity: 0.9, life: 300 },
+        { color: 0xff8800, size: 4000, opacity: 0.7, life: 500 },
+        { color: 0xff4400, size: 6000, opacity: 0.5, life: 700 },
+      ];
+
+      for (const layer of layers) {
+        const mat = new THREE.SpriteMaterial({
+          map: flashTexture,
+          color: layer.color,
+          transparent: true,
+          opacity: layer.opacity,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        });
+        const sprite = new THREE.Sprite(mat);
+        sprite.position.copy(pos);
+        sprite.scale.setScalar(layer.size);
+        this.scene.add(sprite);
+
+        // Simple fade: reduce opacity once, then remove
+        setTimeout(() => {
+          mat.opacity = layer.opacity * 0.3;
+        }, layer.life * 0.5);
+        setTimeout(() => {
+          this.scene.remove(sprite);
+          mat.dispose();
+        }, layer.life);
+      }
+
+      // Simple white flash overlay
+      const whiteOverlay = document.createElement('div');
+      Object.assign(whiteOverlay.style, {
+        position: 'fixed', inset: '0', backgroundColor: 'white',
+        pointerEvents: 'none', zIndex: '99999', opacity: '0.6',
+        transition: 'opacity 0.15s ease',
+      });
+      document.body.appendChild(whiteOverlay);
+      setTimeout(() => { whiteOverlay.style.opacity = '0'; }, 50);
+      setTimeout(() => { whiteOverlay.remove(); }, 250);
+
+      return;
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // DESKTOP: Full cinematic explosion (unchanged — rAF loops OK on desktop)
+    // ══════════════════════════════════════════════════════════════
   const flashTexture = this.getOrCreateTexture('flash', () => this.createFlashTexture());
   const smokeTexture = this.getOrCreateTexture('smoke', () => this.createSmokeTexture());
   const debrisTexture = this.getOrCreateTexture('debris', () => this.createDebrisTexture());
 
-  // 🔥 MAIN FLASH - reduced on mobile to prevent crashes
-  const flashLayers = this.isMobile ? [
-    { color: 0xffffff, size: 2500, opacity: 1.0, life: 0.18, scaleMulti: 8.0 },
-    { color: 0xff8800, size: 5200, opacity: 0.85, life: 0.35, scaleMulti: 10.0 },
-    { color: 0xff4400, size: 7000, opacity: 0.7, life: 0.48, scaleMulti: 11.0 },
-  ] : [
+  // 🔥 MAIN FLASH
+  const flashLayers = [
     { color: 0xffffff, size: 2500, opacity: 1.0, life: 0.18, scaleMulti: 8.0 },
     { color: 0xffcc88, size: 3800, opacity: 0.95, life: 0.25, scaleMulti: 9.0 },
     { color: 0xff8800, size: 5200, opacity: 0.85, life: 0.35, scaleMulti: 10.0 },
@@ -807,7 +865,6 @@ export class CombatSystem {
     { color: 0xaa1100, size: 12000, opacity: 0.3, life: 0.85, scaleMulti: 13.0 },
   ];
 
-  // Fire core with additive blending - SUPER MASSIVE
   for (const layer of flashLayers) {
     const mat = new THREE.SpriteMaterial({
       map: flashTexture,
@@ -820,7 +877,7 @@ export class CombatSystem {
 
     const sprite = new THREE.Sprite(mat);
     sprite.position.copy(pos);
-    const startScale = layer.size * 0.35; // Even larger base scale
+    const startScale = layer.size * 0.35;
     sprite.scale.setScalar(startScale);
     this.scene.add(sprite);
 
@@ -836,14 +893,9 @@ export class CombatSystem {
         return;
       }
 
-      // Explosive expansion
       const scaleMulti = 1 + t * (layer.scaleMulti - 1);
       sprite.scale.setScalar(startScale * scaleMulti);
-      
-      // Quick opacity drop but visible longer
       mat.opacity = layer.opacity * (1 - Math.pow(t, 1.5));
-      
-      // Dramatic upward movement
       sprite.position.y += 45 * (1 - t);
 
       requestAnimationFrame(tick);
@@ -852,12 +904,8 @@ export class CombatSystem {
     requestAnimationFrame(tick);
   }
 
-  // 💨 SMOKE - reduced on mobile
-  const smokeLayers = this.isMobile ? [
-    { color: 0x2a1a0a, size: 4000, opacity: 0.65, life: 1.2, riseSpeed: 6.0, drift: 2.5, count: 2 },
-    { color: 0x6a5a4a, size: 8500, opacity: 0.45, life: 2.0, riseSpeed: 4.0, drift: 1.5, count: 2 },
-    { color: 0xaa9a8a, size: 14000, opacity: 0.25, life: 3.0, riseSpeed: 2.0, drift: 0.8, count: 1 },
-  ] : [
+  // 💨 SMOKE
+  const smokeLayers = [
     { color: 0x2a1a0a, size: 4000, opacity: 0.65, life: 1.5, riseSpeed: 6.0, drift: 2.5, count: 5 },
     { color: 0x4a3a2a, size: 6000, opacity: 0.55, life: 2.0, riseSpeed: 5.0, drift: 2.0, count: 5 },
     { color: 0x6a5a4a, size: 8500, opacity: 0.45, life: 2.6, riseSpeed: 4.0, drift: 1.5, count: 5 },
@@ -877,7 +925,7 @@ export class CombatSystem {
       });
 
       const angle = Math.random() * Math.PI * 2;
-      const radius = (Math.random() - 0.5) * 1200; // Massive spread
+      const radius = (Math.random() - 0.5) * 1200;
       const offsetX = Math.cos(angle) * radius;
       const offsetZ = Math.sin(angle) * radius;
       
@@ -901,19 +949,13 @@ export class CombatSystem {
           return;
         }
 
-        // Massive expansion
         const scaleFactor = 0.2 + t * 3.5;
         sprite.scale.setScalar(layer.size * 0.15 * scaleFactor);
-        
-        // Fast rising mushroom cloud
         sprite.position.y += layer.riseSpeed * (1 - t * 0.4);
         sprite.position.x += driftX * (0.2 + t);
         sprite.position.z += driftZ * (0.2 + t);
-        
-        // Heavy turbulence
         sprite.position.x += Math.sin(elapsed * 5) * 2.5;
         sprite.position.z += Math.cos(elapsed * 4) * 2.5;
-        
         sprite.material.rotation += rotationSpeed;
         mat.opacity = layer.opacity * (1 - Math.pow(t, 1.4));
 
@@ -924,8 +966,8 @@ export class CombatSystem {
     }
   }
 
-  // 🔥 FIREBALL PARTICLES - reduced on mobile
-  const fireParticleCount = this.isMobile ? 20 : 180;
+  // 🔥 FIREBALL PARTICLES
+  const fireParticleCount = 180;
   for (let i = 0; i < fireParticleCount; i++) {
     const mat = new THREE.SpriteMaterial({
       map: flashTexture,
@@ -940,14 +982,13 @@ export class CombatSystem {
     
     const angle = Math.random() * Math.PI * 2;
     const elevation = Math.random() * Math.PI - Math.PI / 2;
-    const speed = 180 + Math.random() * 220; // Extremely fast
+    const speed = 180 + Math.random() * 220;
     const vel = new THREE.Vector3(
       Math.cos(angle) * Math.cos(elevation) * speed,
       Math.sin(elevation) * speed + 120,
       Math.sin(angle) * Math.cos(elevation) * speed
     );
     
-    // Massive particles
     sprite.scale.setScalar(25 + Math.random() * 45);
     this.scene.add(sprite);
 
@@ -965,9 +1006,7 @@ export class CombatSystem {
       }
 
       sprite.position.addScaledVector(vel, 0.016);
-      vel.y -= 25; // Strong gravity
-      
-      // Air resistance
+      vel.y -= 25;
       vel.multiplyScalar(0.96);
       
       const scaleFactor = 1 - t * 0.25;
@@ -980,8 +1019,8 @@ export class CombatSystem {
     requestAnimationFrame(tick);
   }
 
-  // 💥 SHOCKWAVE RINGS - reduced on mobile
-  const ringCount = this.isMobile ? 1 : 3;
+  // 💥 SHOCKWAVE RINGS
+  const ringCount = 3;
   for (let r = 0; r < ringCount; r++) {
     const ringGeo = new THREE.RingGeometry(30 + r * 20, 80 + r * 30, 64);
     const ringMat = new THREE.MeshBasicMaterial({
@@ -1024,7 +1063,6 @@ export class CombatSystem {
         return;
       }
       
-      // Massive expansion
       const scale = 1 + t * 20;
       ring.scale.setScalar(scale);
       ringMat.opacity = (0.85 - r * 0.15) * (1 - Math.pow(t, 1.4));
@@ -1034,8 +1072,8 @@ export class CombatSystem {
     requestAnimationFrame(ringTick);
   }
 
-  // 💨 DEBRIS PARTICLES - reduced on mobile
-  const debrisCount = this.isMobile ? 15 : 120;
+  // 💨 DEBRIS PARTICLES
+  const debrisCount = 120;
   for (let i = 0; i < debrisCount; i++) {
     const mat = new THREE.SpriteMaterial({
       map: debrisTexture,
@@ -1056,7 +1094,6 @@ export class CombatSystem {
       Math.sin(angle) * Math.cos(elevation) * speed
     );
     
-    // Large debris chunks
     sprite.scale.setScalar(12 + Math.random() * 28);
     this.scene.add(sprite);
 
@@ -1092,7 +1129,7 @@ export class CombatSystem {
     requestAnimationFrame(tick);
   }
 
-  // 🌟 EXTREME SCREEN SHAKE - CAMERA VIOLENCE
+  // 🌟 SCREEN SHAKE
   if (this.camera) {
     const originalPos = this.camera.position.clone();
     let shakeTime = 0;
@@ -1107,7 +1144,6 @@ export class CombatSystem {
         return;
       }
       
-      // Violent shaking
       const intensity = (1 - t) * 35;
       this.camera.position.x = originalPos.x + (Math.random() - 0.5) * intensity;
       this.camera.position.y = originalPos.y + (Math.random() - 0.5) * intensity * 1.2;
@@ -1119,7 +1155,7 @@ export class CombatSystem {
     requestAnimationFrame(shakeTick);
   }
 
-  // 💥 NUCLEAR FLASH - FULL SCREEN WHITE OUT (brief)
+  // 💥 WHITE FLASH OVERLAY
   const whiteOverlay = document.createElement('div');
   whiteOverlay.style.position = 'fixed';
   whiteOverlay.style.top = '0';
@@ -1133,7 +1169,6 @@ export class CombatSystem {
   whiteOverlay.style.transition = 'opacity 0.05s ease-out';
   document.body.appendChild(whiteOverlay);
   
-  // Flash white
   setTimeout(() => {
     whiteOverlay.style.opacity = '0.85';
     setTimeout(() => {
@@ -1144,8 +1179,8 @@ export class CombatSystem {
     }, 60);
   }, 0);
 
-  // 🌋 MUSHROOM CLOUD STEM - reduced on mobile
-  const stemCount = this.isMobile ? 5 : 30;
+  // 🌋 MUSHROOM CLOUD STEM
+  const stemCount = 30;
   for (let i = 0; i < stemCount; i++) {
     const mat = new THREE.SpriteMaterial({
       map: flashTexture,
@@ -1288,6 +1323,24 @@ export class CombatSystem {
   // ── Helpers ───────────────────────────────────────────────────
 
   private flashEnemy(root: THREE.Object3D, duration: number): void {
+    // On mobile: simple one-shot flash — no rAF loop
+    if (this.isMobile) {
+      root.traverse(c => {
+        const m = (c as THREE.Mesh).material as THREE.MeshStandardMaterial;
+        if (m?.emissive) {
+          m.emissive.setRGB(1, 0.25, 0);
+          m.emissiveIntensity = 3;
+        }
+      });
+      setTimeout(() => {
+        root.traverse(c => {
+          const m = (c as THREE.Mesh).material as THREE.MeshStandardMaterial;
+          if (m?.emissive) { m.emissive.setScalar(0); m.emissiveIntensity = 0; }
+        });
+      }, duration * 1000);
+      return;
+    }
+
     const end = Date.now() + duration * 1000;
     const tick = () => {
       const remaining = (end - Date.now()) / 1000;
