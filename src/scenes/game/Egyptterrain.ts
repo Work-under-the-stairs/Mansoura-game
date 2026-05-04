@@ -373,10 +373,10 @@ export function setupLighting(scene: THREE.Scene): {
   sun: THREE.DirectionalLight;
   ambient: THREE.AmbientLight;
 } {
-  const ambient = new THREE.AmbientLight(0xFFFFFF, 0.8);
+  const ambient = new THREE.AmbientLight(0xFFFFFF, 2);
   scene.add(ambient);
 
-  const sun = new THREE.DirectionalLight(0xFFEECC, 2.0);
+  const sun = new THREE.DirectionalLight(0xFFEECC, 3.0);
   sun.position.set(60000, 100000, -80000);
   sun.castShadow       = false;
   sun.matrixAutoUpdate = false;
