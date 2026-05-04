@@ -341,7 +341,7 @@ export class MiniMap {
 
   public setReferenceHeading(headingRad: number) {
     this.referenceHeading = headingRad;
-    console.log('[MiniMap] Reference Heading Set:', headingRad);
+    // console.log('[MiniMap] Reference Heading Set:', headingRad);
   }
 
   public showArrow() {

@@ -71,7 +71,7 @@ export class TransitionPlane {
             this.targetLocalPos.copy(this.sideLocalPos);
             this.model.visible = false;
 
-            console.log('[TransitionPlane] Loaded and attached to cockpit.');
+            // console.log('[TransitionPlane] Loaded and attached to cockpit.');
 
             if (this.pendingAppear) {
                 this.pendingAppear = false;
@@ -137,7 +137,7 @@ export class TransitionPlane {
         this.targetLocalPos.copy(this.sideLocalPos);
         this.isLerping = true;
 
-        console.log('[TransitionPlane] Lerping to side formation.');
+        // console.log('[TransitionPlane] Lerping to side formation.');
     }
 
     /** Snap back and hide (called on replay reset) */
@@ -177,7 +177,7 @@ export class TransitionPlane {
                 this.model.position.copy(this.targetLocalPos);
                 this.currentLocalPos.copy(this.targetLocalPos);
                 this.isLerping = false;
-                console.log('[TransitionPlane] Reached side formation.');
+                // console.log('[TransitionPlane] Reached side formation.');
             }
         }
     }

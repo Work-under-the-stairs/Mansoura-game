@@ -20,12 +20,12 @@ export class MissionController2 {
    * We immediately run the transition sequence.
    */
   public start() {
-    console.log('[MissionController2] Starting Level 2...');
+    // console.log('[MissionController2] Starting Level 2...');
     this.runLevel2Transition();
   }
 
   public reset() {
-    console.log('[MissionController2] Resetting Level 2 state');
+    // console.log('[MissionController2] Resetting Level 2 state');
     for (const t of this.pendingTimers) clearTimeout(t);
     this.pendingTimers = [];
     this.state = MissionState.START;
@@ -40,21 +40,21 @@ export class MissionController2 {
   public onEnemyKilled() {
   // Only count kills if we are actually in a battle state
   if (this.state !== MissionState.BATTLE_WAVE_1 && this.state !== MissionState.BATTLE_WAVE_2) {
-    console.log(`[MissionController2] Enemy killed but state is ${this.state}, ignoring`);
+    // console.log(`[MissionController2] Enemy killed but state is ${this.state}, ignoring`);
     return;
   }
 
   this.waveKills++;
-  console.log(`[MissionController2] Enemy killed. Wave kills: ${this.waveKills}/3, State: ${this.state}`);
+  // console.log(`[MissionController2] Enemy killed. Wave kills: ${this.waveKills}/3, State: ${this.state}`);
 
   if (this.state === MissionState.BATTLE_WAVE_1 && this.waveKills >= 3) {
-    console.log('[MissionController2] Wave 1 complete! Moving to Wave 2');
+    // console.log('[MissionController2] Wave 1 complete! Moving to Wave 2');
     this.waveKills = 0;
     this.state = MissionState.BATTLE_WAVE_2;
     this.later(() => this.runStateLogic(), 2500);
   }
   else if (this.state === MissionState.BATTLE_WAVE_2 && this.waveKills >= 3) {
-    console.log('[MissionController2] Wave 2 complete! VICTORY!');
+    //console.log('[MissionController2] Wave 2 complete! VICTORY!');
     this.waveKills = 0;
     this.state = MissionState.VICTORY;
     this.later(() => this.victory(), 2000);
@@ -76,7 +76,7 @@ export class MissionController2 {
    * t=6s  → Wave 1 enemies spawn.
    */
   private runLevel2Transition() {
-    console.log('[MissionController2] Running transition sequence');
+    // console.log('[MissionController2] Running transition sequence');
 
     // 1. Show the notification message first
     this.engine.notif.show({
@@ -88,14 +88,14 @@ export class MissionController2 {
 
     // 2. After 1s companion plane appears in front (instant snap, same heading/height)
     this.later(() => {
-      console.log('[MissionController2] Companion plane appearing in front.');
+      // console.log('[MissionController2] Companion plane appearing in front.');
       if (this.engine.transitionPlane) {
         this.engine.transitionPlane.appearInFront();
       }
 
       // 3. Hold 5 seconds in front, then slide to side formation
       this.later(() => {
-        console.log('[MissionController2] Moving plane to side formation. Starting wave 1.');
+        // console.log('[MissionController2] Moving plane to side formation. Starting wave 1.');
         if (this.engine.transitionPlane) {
           this.engine.transitionPlane.moveToSide();
         }
@@ -146,9 +146,9 @@ export class MissionController2 {
 
   private spawnWave(count: number) {
   this.waveKills = 0;
-  console.log(`[MissionController2] Spawning wave with ${count} enemies`);
+  // console.log(`[MissionController2] Spawning wave with ${count} enemies`);
   for (let i = 0; i < count; i++) {
-    console.log(`[MissionController2] Spawning enemy ${i + 1}/${count}`);
+    // console.log(`[MissionController2] Spawning enemy ${i + 1}/${count}`);
     (this.engine as any).enemies.spawnEnemy();
   }
 }
@@ -157,7 +157,7 @@ private victory() {
   if (this.victoryDeclared) return;
   this.victoryDeclared = true;
 
-  console.log('[MissionController2] VICTORY! Showing popup');
+  // console.log('[MissionController2] VICTORY! Showing popup');
 
   const audio = new Audio('/sounds/vectory.m4a');
   audio.loop = false;

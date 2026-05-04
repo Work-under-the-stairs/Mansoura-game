@@ -61,7 +61,7 @@ export class Engine {
     this.loadingScene.updateProgress(1);
 
     this.loadingScene.onComplete(() => {
-      console.log('[Engine] Assets ready — firing readyCallback');
+      // console.log('[Engine] Assets ready — firing readyCallback');
       if (this.readyCallback) {
         this.readyCallback();
         this.readyCallback = null;
@@ -156,10 +156,10 @@ export class Engine {
       this.projectileManager,
       this.notifications,
       () => {
-        console.log("Engine: Restart triggered");
+        // console.log("Engine: Restart triggered");
       },
       () => {
-        console.log("Engine: Exit triggered");
+        // console.log("Engine: Exit triggered");
         this.destroy();
       }
     );
@@ -192,14 +192,14 @@ export class Engine {
     // Wire level-1 victory → level-2 start
     this.missionController.onVictory = () => {
       if (this.levelStarted !== 1) return;
-      console.log('[Engine] Level 1 complete → Level 2 starting');
+      // console.log('[Engine] Level 1 complete → Level 2 starting');
       this.enemies.clearAll();
       const projs = (this.projectileManager as any).projectiles as Array<{mesh: any, alive: boolean}> | undefined;
       if (projs) {
         for (const p of projs) { this.scene.remove(p.mesh); p.alive = false; }
         (this.projectileManager as any).projectiles = [];
       }
-      console.log('[Engine] Level 1 victory detected. Starting Level 2 sequence.');
+      // console.log('[Engine] Level 1 victory detected. Starting Level 2 sequence.');
       this.levelStarted = 2;
       if (this.missionController2) {
         this.missionController2.reset();
@@ -256,7 +256,7 @@ export class Engine {
   // =====================
 
   public resetForReplay(): void {
-    console.log('[Engine] Resetting for replay...');
+    // console.log('[Engine] Resetting for replay...');
 
     if (this.missionController)  this.missionController.reset();
     if (this.missionController2) this.missionController2.reset();
@@ -287,7 +287,7 @@ export class Engine {
     this.transitionPlane?.snapToCockpit();
 
     this.levelStarted = 0;
-    console.log('[Engine] Reset complete — mission restarting.');
+    // console.log('[Engine] Reset complete — mission restarting.');
   }
   public launchAllies(count: 1 | 2): void {
     this.alliedPlanes.launch(count);
@@ -409,7 +409,7 @@ export class Engine {
     this.renderer.dispose();
     this.container.remove();
 
-    console.log('Engine destroyed safely.');
+    // console.log('Engine destroyed safely.');
   }
 
   public onReady(callback: () => void): void {

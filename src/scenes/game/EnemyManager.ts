@@ -63,7 +63,7 @@ export class EnemyManager {
         this.model = gltf.scene;
         this.model.scale.setScalar(BASE_SCALE);
         this.modelReady = true;
-        console.log('✅ Enemy model loaded');
+        // console.log('✅ Enemy model loaded');
       },
       undefined,
       (err) => console.error('❌ Enemy load error:', err),
@@ -122,7 +122,7 @@ export class EnemyManager {
     this.enemies.push(enemy);
     this.spawnIndex++;
 
-    console.log(`[EnemyManager] Spawned enemy #${this.spawnIndex} at offsetX=${Math.round(offsetX)}`);
+    // console.log(`[EnemyManager] Spawned enemy #${this.spawnIndex} at offsetX=${Math.round(offsetX)}`);
   }
 
   public getEnemies(): THREE.Object3D[] {

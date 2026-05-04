@@ -71,7 +71,7 @@ export class LoadingScene {
     document.body.appendChild(startScreen);
 
     const unlock = () => {
-      console.log('[LoadingScene] User clicked. isLoadFinished=', this.isLoadFinished, 'hideScheduled=', this.hideScheduled);
+      // console.log('[LoadingScene] User clicked. isLoadFinished=', this.isLoadFinished, 'hideScheduled=', this.hideScheduled);
       this.initMusic();
       this.overlay = this.createOverlay();
 
@@ -95,12 +95,12 @@ export class LoadingScene {
         // → we own the hide responsibility now
         this.hideScheduled = true;
         this.targetProgress = 100;
-        console.log('[LoadingScene] Scheduling hide from click handler (load already done)');
+        // console.log('[LoadingScene] Scheduling hide from click handler (load already done)');
         setTimeout(() => {
           this.stopProgressAnimation();
           this.updateProgress(100);
           setTimeout(() => {
-            console.log('[LoadingScene] Calling hide() — click-handler path');
+            // console.log('[LoadingScene] Calling hide() — click-handler path');
             this.hide();
           }, 1500);
         }, 1200);
@@ -158,25 +158,25 @@ export class LoadingScene {
     manager.onProgress = (url, loaded, total) => {
       const progress = total > 0 ? (loaded / total) * 100 : 0;
       this.targetProgress = progress;
-      console.log(`Loading target: ${progress.toFixed(0)}% (${loaded}/${total})`);
+      // console.log(`Loading target: ${progress.toFixed(0)}% (${loaded}/${total})`);
     };
 
     manager.onLoad = () => {
       this.isLoadFinished = true;
       this.targetProgress = 100;
-      console.log('[LoadingScene] onLoad fired. overlay=', !!this.overlay, 'hideScheduled=', this.hideScheduled);
+      // console.log('[LoadingScene] onLoad fired. overlay=', !!this.overlay, 'hideScheduled=', this.hideScheduled);
 
       if (this.hideScheduled) return; // already handled
 
       if (this.overlay) {
         // User already clicked — overlay exists, we schedule hide now
         this.hideScheduled = true;
-        console.log('[LoadingScene] Scheduling hide from onLoad (overlay exists)');
+        // console.log('[LoadingScene] Scheduling hide from onLoad (overlay exists)');
         setTimeout(() => {
           this.stopProgressAnimation();
           this.updateProgress(100);
           setTimeout(() => {
-            console.log('[LoadingScene] Calling hide() — onLoad path');
+            // console.log('[LoadingScene] Calling hide() — onLoad path');
             this.hide();
           }, 1500);
         }, 1200);
@@ -292,14 +292,14 @@ export class LoadingScene {
   }
 
   public hide(): void {
-    console.log('[LoadingScene] hide() called. overlay=', !!this.overlay, 'onCompleteCallback=', !!this.onCompleteCallback);
+    // console.log('[LoadingScene] hide() called. overlay=', !!this.overlay, 'onCompleteCallback=', !!this.onCompleteCallback);
     this.stopProgressAnimation();
     if (this.overlay) {
       this.overlay.classList.add('fade-out');
       setTimeout(() => {
         this.overlay?.remove();
         this.overlay = null;
-        console.log('[LoadingScene] Overlay removed — firing onCompleteCallback');
+        // console.log('[LoadingScene] Overlay removed — firing onCompleteCallback');
         if (this.onCompleteCallback) {
           this.onCompleteCallback();
         } else {
@@ -312,7 +312,7 @@ export class LoadingScene {
   }
 
   public onComplete(cb: () => void): void {
-    console.log('[LoadingScene] onComplete registered');
+    // console.log('[LoadingScene] onComplete registered');
     this.onCompleteCallback = cb;
   }
 }
