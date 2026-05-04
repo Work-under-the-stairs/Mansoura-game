@@ -48,7 +48,6 @@ export class MissionController {
   // ✅ Helper: tracked setTimeout so we can cancel all on reset
   private later(fn: () => void, ms: number) {
     const id = setTimeout(() => {
-      // Remove from list once it fires
       this.pendingTimers = this.pendingTimers.filter(t => t !== id);
       fn();
     }, ms);
@@ -82,25 +81,43 @@ export class MissionController {
 
       case MissionState.SUPPORT_DECISION_SALHIA:
         this.later(() => {
-          this.showDecision('دعم مطلوب: الصالحية', 'أرسل سرب دعم إلى منطقة الصالحية الآن؟', (count) => {
-            this.engine.notif.show({
-              type: 'success', title: 'تم الإرسال', msg: `تم توجيه ${count} طائرات للصالحية`,
-            });
-            this.state = MissionState.SUPPORT_DECISION_TANTA;
-            this.runStateLogic();
-          });
+          this.showDecision(
+            'دعم مطلوب: الصالحية',
+            'أرسل سرب دعم إلى منطقة الصالحية الآن؟',
+            (count) => {
+              // ✅ أطلق الطيارات الحليفة فعلياً
+              (this.engine as any).launchAllies(count as 1 | 2);
+
+              this.engine.notif.show({
+                type: 'success',
+                title: 'تم الإرسال',
+                msg: `تم توجيه ${count} طائرات للصالحية`,
+              });
+              this.state = MissionState.SUPPORT_DECISION_TANTA;
+              this.runStateLogic();
+            }
+          );
         }, 4000);
         break;
 
       case MissionState.SUPPORT_DECISION_TANTA:
         this.later(() => {
-          this.showDecision('دعم مطلوب: طنطا', 'تحتاج قاعدة طنطا إلى مساندة فورية!', (count) => {
-            this.engine.notif.show({
-              type: 'success', title: 'تم الإرسال', msg: `تم توجيه ${count} طائرات لطنطا`,
-            });
-            this.state = MissionState.APPROACHING_MANSOURA;
-            this.runStateLogic();
-          });
+          this.showDecision(
+            'دعم مطلوب: طنطا',
+            'تحتاج قاعدة طنطا إلى مساندة فورية!',
+            (count) => {
+              // ✅ أطلق الطيارات الحليفة فعلياً
+              (this.engine as any).launchAllies(count as 1 | 2);
+
+              this.engine.notif.show({
+                type: 'success',
+                title: 'تم الإرسال',
+                msg: `تم توجيه ${count} طائرات لطنطا`,
+              });
+              this.state = MissionState.APPROACHING_MANSOURA;
+              this.runStateLogic();
+            }
+          );
         }, 5000);
         break;
 
@@ -164,18 +181,16 @@ export class MissionController {
 
     const card = document.createElement('div');
     card.id = 'decision-card';
-    
-    // استخدمي نفس الكلاس mf-notif عشان ياخد نفس الستايل (الخلفية والحدود والظل)
-    card.className = 'mf-notif'; 
-    
-    // ضبط مكان البطاقة يدويًا لأنها خارج نظام الـ Stack بتاع النوتفيكيشن
+
+    card.className = 'mf-notif';
+
     Object.assign(card.style, {
       position: 'fixed',
-      top: '120px', // تحت النوتفيكيشنز الأولى
+      top: '120px',
       right: '18px',
       zIndex: '100000',
       pointerEvents: 'auto',
-      flexDirection: 'column', // عشان الزراير تنزل تحت الكلام
+      flexDirection: 'column',
       width: '360px',
       animation: 'mf-in 0.4s ease-out',
       direction: 'rtl'
@@ -224,25 +239,25 @@ export class MissionController {
         <button class="decision-btn" id="opt-1">طائرة واحدة</button>
         <button class="decision-btn" id="opt-2">طائرتان</button>
       </div>
-      
-      <!-- شريط مزخرف سفلي بنفس لون الـ info -->
+
       <div class="mf-bar" style="background: #556B2F; width: 100%;"></div>
     `;
 
     document.body.appendChild(card);
 
-    card.querySelector('#opt-1')?.addEventListener('click', () => { 
-      this.closeDecision(card); 
-      onSelect(1); 
+    card.querySelector('#opt-1')?.addEventListener('click', () => {
+      this.closeDecision(card);
+      onSelect(1);
+      // ✅ الطيارات بتتطلق جوا onSelect نفسها — مش هنا
     });
-    
-    card.querySelector('#opt-2')?.addEventListener('click', () => { 
-      this.closeDecision(card); 
-      onSelect(2); 
+
+    card.querySelector('#opt-2')?.addEventListener('click', () => {
+      this.closeDecision(card);
+      onSelect(2);
+      // ✅ الطيارات بتتطلق جوا onSelect نفسها — مش هنا
     });
   }
 
-  // دالة لإغلاق القرار بنفس حركة النوتفيكيشن
   private closeDecision(el: HTMLElement) {
     el.classList.add('mf-hide');
     setTimeout(() => el.remove(), 280);
@@ -258,7 +273,6 @@ export class MissionController {
       duration: 4000
     });
 
-    // Notify Engine directly — no polling needed
     this.later(() => {
       this.onVictory?.();
     }, 4500);
