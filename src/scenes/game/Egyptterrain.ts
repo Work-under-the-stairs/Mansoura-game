@@ -1,20 +1,11 @@
 import * as THREE from 'three';
 
 // ============================================================
-//  EgyptTerrain_DETAILED.ts
-//  Procedural sky + infinite terrain + DETAILED TEXTURES + SETTINGS UI
-//  مصر ١٩٧٣: دلتا النيل + الصحراء + سيناء
-//  ✅ HIGH-DETAIL TEXTURES + SETTINGS ICON + FINE-GRAINED SURFACE
-//  ✅ ROCKY COLOR PALETTE (limestone / sandstone cliffs)
-//
-//  COCKPIT FLOOR CLAMP — add this in your render/update loop:
-//    camera.position.y = Math.max(
-//      camera.position.y,
-//      terrain.getMinCameraHeight(camera.position.x, camera.position.z)
-//    );
+//  EgyptTerrain_UNIFORM.ts
+//  Procedural sky + infinite terrain + EVEN LIGHTING
+//  No dark spots - fully uniform illumination
 // ============================================================
 
-// ---------- Simple Perlin / Value Noise (no dependencies) ----------
 function hash(n: number): number {
   return (Math.sin(n * 127.1 + 311.7) * 43758.5453) % 1;
 }
@@ -46,35 +37,24 @@ function fbm(x: number, z: number, octaves: number, lacunarity = 2.0, gain = 0.5
   return value / max;
 }
 
-// ✅ DETAIL NOISE - fine-grained surface texture
-function detailNoise(x: number, z: number): number {
-  return fbm(x, z, 8, 2.2, 0.45) * 0.5 + fbm(x * 3.5, z * 3.5, 6, 2.0, 0.5) * 0.3;
-}
-
-// ---------- Terrain height function — tuned for Egypt ----------
 export function egyptHeight(wx: number, wz: number): number {
   const SCALE = 1 / 3000;
   const nx = wx * SCALE;
   const nz = wz * SCALE;
 
   const desert = fbm(nx, nz, 5) * 120;
-
   const sinaiInfluence = THREE.MathUtils.smoothstep(wx, 20000, 80000);
   const sinai = fbm(nx * 0.4 + 10, nz * 0.4, 6, 2.1, 0.55) * 1200 * sinaiInfluence;
-
   const deltaInfluence = THREE.MathUtils.smoothstep(-wz, 30000, 80000);
   const delta = -desert * 0.8 * deltaInfluence;
-
   const nileX = wx - 5000;
   const nileValley = Math.exp(-(nileX * nileX) / (8000 * 8000)) * 60;
-
   const raw = Math.max(0, desert + sinai + delta - nileValley);
-
   return raw - 3000;
 }
 
 // ============================================================
-//  ProceduralSky — BLUE SKY + VISIBLE SUN
+//  ProceduralSky — UNIFORM BRIGHT SKY
 // ============================================================
 export class ProceduralSky {
   private mesh: THREE.Mesh;
@@ -101,55 +81,25 @@ export class ProceduralSky {
         varying vec3  vWorldPos;
         varying vec3  vNormal;
 
-        float rayleigh(float cosAngle) {
-          return 0.75 * (1.0 + cosAngle * cosAngle);
-        }
-
-        float mie(float cosAngle, float g) {
-          float g2 = g * g;
-          return (1.0 - g2) / pow(max(1.0 + g2 - 2.0 * g * cosAngle, 0.001), 1.5);
-        }
-
         void main() {
-          vec3  dir     = normalize(vWorldPos);
-          float height  = clamp(dir.y, -1.0, 1.0);
-          float cosAngle = dot(dir, normalize(uSunDir));
-
-          // ✅ BLUE SKY GRADIENT
-          vec3 zenith  = vec3(0.2, 0.5, 0.9);      // Deep blue at top
-          vec3 horizon = vec3(0.7, 0.85, 1.0);     // Light blue at horizon
-          vec3 haze    = vec3(0.85, 0.9, 0.95);    // Very light blue near ground
-
-          // Smooth transition from horizon to zenith
-          float t = pow(max(height, 0.0), 0.4);
-          vec3 sky = mix(mix(haze, horizon, smoothstep(-0.1, 0.15, height)), zenith, t);
-
-          // Rayleigh scattering (blue light)
-          sky *= 1.0 + rayleigh(cosAngle) * 0.3;
-
-          // ✅ VISIBLE SUN - bright and prominent
-          float sunGlow   = mie(cosAngle, 0.9997);
-          float sunCorona = mie(cosAngle, 0.985) * 0.5;
-          vec3  sunColor  = vec3(1.0, 0.95, 0.7);  // Warm yellow sun
+          vec3 dir = normalize(vWorldPos);
+          float height = clamp(dir.y, -1.0, 1.0);
           
-          // Add sun disk
-          float sunDisk = smoothstep(0.02, 0.015, acos(cosAngle) / 3.14159);
-          sky += sunColor * (sunGlow * 0.3 + sunCorona * 0.15 + sunDisk * 2.0);
-
-          // Smooth transition to ground at horizon
-          float groundBlend = smoothstep(-0.2, 0.08, height);
-          vec3 groundColor = vec3(0.8, 0.75, 0.65);
-          sky = mix(groundColor, sky, groundBlend);
-
-          // Tone mapping
-          sky = sky / (sky + vec3(1.0));
-          sky = pow(sky, vec3(1.0 / 2.2));
-
-          gl_FragColor = vec4(sky, 1.0);
+          // UNIFORM SKY COLOR - no gradient, just one bright color
+          vec3 skyColor = vec3(0.75, 0.85, 1.0);
+          
+          // Simple sun glow
+          float cosAngle = dot(dir, normalize(uSunDir));
+          float sunGlow = smoothstep(0.98, 0.995, cosAngle);
+          vec3 sunColor = vec3(1.0, 0.95, 0.8);
+          
+          vec3 finalColor = skyColor + sunColor * sunGlow * 0.8;
+          
+          gl_FragColor = vec4(finalColor, 1.0);
         }
       `,
       uniforms: {
-        uSunDir: { value: new THREE.Vector3(0.3, 0.6, -0.5).normalize() },
+        uSunDir: { value: new THREE.Vector3(0.5, 0.7, -0.5).normalize() },
         uTime:   { value: 0.0 },
       },
       side: THREE.BackSide,
@@ -166,9 +116,9 @@ export class ProceduralSky {
   private createSunObject(scene: THREE.Scene): void {
     const sunGlowGeo = new THREE.SphereGeometry(15000, 32, 32);
     const sunGlowMat = new THREE.MeshBasicMaterial({
-      color: 0xFFDD44,
+      color: 0xFFDD88,
       transparent: true,
-      opacity: 0.6,
+      opacity: 0.5,
       fog: false,
     });
     const sunGlow = new THREE.Mesh(sunGlowGeo, sunGlowMat);
@@ -177,7 +127,7 @@ export class ProceduralSky {
 
     const sunDiskGeo = new THREE.SphereGeometry(8000, 32, 32);
     const sunDiskMat = new THREE.MeshBasicMaterial({
-      color: 0xFFEE99,
+      color: 0xFFEEAA,
       fog: false,
     });
     const sunDisk = new THREE.Mesh(sunDiskGeo, sunDiskMat);
@@ -204,7 +154,11 @@ export class ProceduralSky {
 
   setTimeOfDay(t: number): void {
     const angle  = (t * Math.PI * 2) - Math.PI / 2;
-    const sunDir = new THREE.Vector3(Math.cos(angle) * 0.7, Math.sin(angle) * 0.8, Math.sin(angle) * 0.3).normalize();
+    const sunDir = new THREE.Vector3(
+      Math.cos(angle) * 0.7,
+      Math.sin(angle) * 0.8,
+      Math.sin(angle) * 0.3
+    ).normalize();
     this.material.uniforms.uSunDir.value.copy(sunDir);
   }
 
@@ -214,12 +168,11 @@ export class ProceduralSky {
 }
 
 // ============================================================
-//  InfiniteTerrain — chunks تتولد مع الطيارة
-//  ✅ HIGH-DETAIL PROCEDURAL TEXTURES
+//  InfiniteTerrain — UNIFORM BRIGHT TEXTURE
 // ============================================================
-const CHUNK_SIZE   = 8000;
-const CHUNK_SEGS   = 128;  // ✅ INCREASED FOR DETAIL
-const VIEW_RADIUS  = 2;
+const CHUNK_SIZE  = 8000;
+const CHUNK_SEGS  = 128;
+const VIEW_RADIUS = 2;
 
 interface Chunk {
   mesh: THREE.Mesh;
@@ -230,102 +183,40 @@ interface Chunk {
 export class InfiniteTerrain {
   private scene: THREE.Scene;
   private chunks: Map<string, Chunk> = new Map();
-  private material: THREE.ShaderMaterial;
+  private material: THREE.MeshStandardMaterial;
   private lastCX = Infinity;
   private lastCZ = Infinity;
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
 
-    // ✅ CUSTOM SHADER FOR DETAILED TEXTURES
-    this.material = new THREE.ShaderMaterial({
-      vertexShader: `
-        varying vec3 vNormal;
-        varying vec3 vPosition;
-        varying vec3 vColor;
-        
-        attribute vec3 color;
-        
-        void main() {
-          vNormal = normalize(normalMatrix * normal);
-          vPosition = position;
-          vColor = color;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: `
-        varying vec3 vNormal;
-        varying vec3 vPosition;
-        varying vec3 vColor;
-        
-        uniform vec3 uSunDir;
-        
-        // ✅ PROCEDURAL DETAIL TEXTURE
-        float hash(vec3 p) {
-          return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453);
-        }
-        
-        float noise(vec3 p) {
-          vec3 i = floor(p);
-          vec3 f = fract(p);
-          f = f * f * (3.0 - 2.0 * f);
-          
-          float n000 = hash(i);
-          float n100 = hash(i + vec3(1.0, 0.0, 0.0));
-          float n010 = hash(i + vec3(0.0, 1.0, 0.0));
-          float n110 = hash(i + vec3(1.0, 1.0, 0.0));
-          
-          float nx0 = mix(n000, n100, f.x);
-          float nx1 = mix(n010, n110, f.x);
-          return mix(nx0, nx1, f.y);
-        }
-        
-        float fbm(vec3 p) {
-          float value = 0.0;
-          float amplitude = 1.0;
-          float frequency = 1.0;
-          
-          for(int i = 0; i < 6; i++) {
-            value += amplitude * noise(p * frequency);
-            amplitude *= 0.5;
-            frequency *= 2.0;
-          }
-          return value;
-        }
-        
-        void main() {
-          // ✅ BASE COLOR FROM HEIGHT
-          vec3 baseColor = vColor;
-          
-          // ✅ FINE-GRAINED DETAIL TEXTURE
-          vec3 detailPos = vPosition * 0.01;
-          float detail = fbm(detailPos);
-          float fineDetail = fbm(detailPos * 3.0) * 0.3;
-          
-          // Blend detail with base color
-          vec3 detailColor = mix(baseColor * 0.8, baseColor * 1.2, detail);
-          detailColor = mix(detailColor * 0.9, detailColor * 1.1, fineDetail);
-          
-          // ✅ LIGHTING
-          float diffuse = max(0.3, dot(vNormal, normalize(uSunDir)));
-          float ambient = 0.5;
-          float light = ambient + diffuse * 0.7;
-          
-          // ✅ SPECULAR HIGHLIGHTS (sand sparkle)
-          vec3 viewDir = normalize(-vPosition);
-          vec3 halfDir = normalize(normalize(uSunDir) + viewDir);
-          float specular = pow(max(0.0, dot(vNormal, halfDir)), 16.0) * 0.3;
-          
-          vec3 finalColor = detailColor * light + vec3(1.0) * specular;
-          
-          gl_FragColor = vec4(finalColor, 1.0);
-        }
-      `,
-      uniforms: {
-        uSunDir: { value: new THREE.Vector3(0.3, 0.6, -0.5).normalize() },
-      },
-      side: THREE.FrontSide,
+    // UNIFORM MATERIAL - no lighting variation, full brightness
+    this.material = new THREE.MeshStandardMaterial({
+      color: 0xD2B48C,  // Sandy color
+      emissive: 0xC8A86C,  // Emissive to keep everything bright
+      emissiveIntensity: 0.6,  // High emissive = no dark spots
+      roughness: 0.8,
+      metalness: 0.1,
+      flatShading: false,
     });
+
+    // Load sand texture for more detail
+    const loader = new THREE.TextureLoader();
+    loader.load(
+      '/images/sand-dune-texture-background.jpg',
+      (tex) => {
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.wrapT = THREE.RepeatWrapping;
+        tex.repeat.set(32, 32);
+        tex.anisotropy = 16;
+        this.material.map = tex;
+        this.material.needsUpdate = true;
+      },
+      undefined,
+      (err) => {
+        console.warn('[InfiniteTerrain] Could not load texture — using fallback color.', err);
+      }
+    );
   }
 
   update(cameraWorldPos: THREE.Vector3): void {
@@ -346,8 +237,10 @@ export class InfiniteTerrain {
     }
 
     this.chunks.forEach((chunk, key) => {
-      if (Math.abs(chunk.cx - cx) > VIEW_RADIUS + 1 ||
-          Math.abs(chunk.cz - cz) > VIEW_RADIUS + 1) {
+      if (
+        Math.abs(chunk.cx - cx) > VIEW_RADIUS + 1 ||
+        Math.abs(chunk.cz - cz) > VIEW_RADIUS + 1
+      ) {
         this.scene.remove(chunk.mesh);
         chunk.mesh.geometry.dispose();
         this.chunks.delete(key);
@@ -360,59 +253,27 @@ export class InfiniteTerrain {
     geo.rotateX(-Math.PI / 2);
 
     const positions = geo.attributes.position as THREE.BufferAttribute;
-    const colors    = new Float32Array(positions.count * 3);
-    const color     = new THREE.Color();
 
     for (let i = 0; i < positions.count; i++) {
       const wx = positions.getX(i) + cx * CHUNK_SIZE;
       const wz = positions.getZ(i) + cz * CHUNK_SIZE;
-      const h  = egyptHeight(wx, wz);
-
-      positions.setY(i, h);
-
-      const rawH = h + 3000;
-
-      // ✅ ROCKY DESERT PALETTE — light warm stone, grey-tan rock faces, sandy flats
-      if (rawH < 5) {
-        color.setHex(0xD4C4A0);  // flat dusty sand-stone
-      } else if (rawH < 40) {
-        color.setHex(0xC8B890);  // pale sandy rock
-      } else if (rawH < 100) {
-        color.setHex(0xBDAE85);  // warm beige rock
-      } else if (rawH < 250) {
-        color.setHex(0xB09870);  // mid stone — tawny limestone
-      } else if (rawH < 600) {
-        color.setHex(0x9E8860);  // darker rocky face
-      } else {
-        color.setHex(0x8C7A58);  // shadowed cliff / ridge stone
-      }
-
-      // ✅ ROCK VARIATION — grey-cool patches for shaded rock faces, warm patches for lit surfaces
-      const rockNoise  = detailNoise(wx * 0.00018, wz * 0.00018);
-      const crackNoise = detailNoise(wx * 0.0006,  wz * 0.0006);
-      if (rockNoise > 0.60) {
-        // Cool grey-stone patches (shaded rock)
-        color.lerp(new THREE.Color(0xA09888), (rockNoise - 0.60) * 1.8);
-      } else if (crackNoise > 0.65) {
-        // Darker crevice / crack lines
-        color.lerp(new THREE.Color(0x7A6E58), (crackNoise - 0.65) * 1.5);
-      }
-
-      // ✅ SUBTLE BRIGHTNESS VARIATION — surface texture micro-detail
-      const variation = detailNoise(wx * 0.0001, wz * 0.0001) * 0.14 - 0.05;
-      color.multiplyScalar(1.0 + variation);
-
-      colors[i * 3]     = color.r;
-      colors[i * 3 + 1] = color.g;
-      colors[i * 3 + 2] = color.b;
+      positions.setY(i, egyptHeight(wx, wz));
     }
 
-    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     positions.needsUpdate = true;
     geo.computeVertexNormals();
 
+    // Force all normals to point straight up for uniform lighting
+    const normals = geo.attributes.normal as THREE.BufferAttribute;
+    for (let i = 0; i < normals.count; i++) {
+      normals.setXYZ(i, 0, 1, 0);
+    }
+    normals.needsUpdate = true;
+
     const mesh = new THREE.Mesh(geo, this.material);
     mesh.position.set(cx * CHUNK_SIZE, 0, cz * CHUNK_SIZE);
+    mesh.receiveShadow = false;
+    mesh.castShadow = false;
 
     this.scene.add(mesh);
     this.chunks.set(key, { mesh, cx, cz });
@@ -422,71 +283,86 @@ export class InfiniteTerrain {
     return egyptHeight(x, z);
   }
 
-  // ✅ COCKPIT FLOOR CLAMP — call this every frame and enforce camera.position.y >= result
-  // minClearance: how many units above ground the cockpit must stay (default 80)
   getMinCameraHeight(x: number, z: number, minClearance = 80): number {
     return egyptHeight(x, z) + minClearance;
   }
-
-  setSunDirection(sunDir: THREE.Vector3): void {
-    this.material.uniforms.uSunDir.value.copy(sunDir.normalize());
-  }
 }
 
 // ============================================================
-//  DistanceFog — يخفي الـ horizon seam تماماً
+//  DistanceFog — LIGHT UNIFORM FOG
 // ============================================================
 export function setupFog(scene: THREE.Scene): void {
-  scene.fog = new THREE.FogExp2(0xB0D4E8, 0.000025);
-  scene.background = new THREE.Color(0xB0D4E8);
+  // Very light fog - barely visible
+  scene.fog = new THREE.FogExp2(0xC8D8E8, 0.000012);
+  scene.background = new THREE.Color(0xC8D8E8);
 }
 
 // ============================================================
-//  الإضاءة — شمس مصر ١٩٧٣
+//  Lighting — FULLY UNIFORM (no directional shadows)
 // ============================================================
 export function setupLighting(scene: THREE.Scene): {
   sun: THREE.DirectionalLight;
   ambient: THREE.AmbientLight;
 } {
-  const ambient = new THREE.AmbientLight(0xFFFFFF, 0.8);
+  // Very bright ambient light - this eliminates all dark spots
+  const ambient = new THREE.AmbientLight(0xFFFFFF, 1.2);
   scene.add(ambient);
 
-  const sun = new THREE.DirectionalLight(0xFFEECC, 2.0);
+  // Soft fill light from below
+  const fillUp = new THREE.PointLight(0xDDCCAA, 0.8);
+  fillUp.position.set(0, -1000, 0);
+  scene.add(fillUp);
+
+  // Additional fill light from all directions
+  const fillLight1 = new THREE.PointLight(0xCCDDFF, 0.5);
+  fillLight1.position.set(10000, 5000, 10000);
+  scene.add(fillLight1);
+
+  const fillLight2 = new THREE.PointLight(0xCCDDFF, 0.5);
+  fillLight2.position.set(-10000, 5000, -10000);
+  scene.add(fillLight2);
+
+  const fillLight3 = new THREE.PointLight(0xDDCCAA, 0.5);
+  fillLight3.position.set(10000, 5000, -10000);
+  scene.add(fillLight3);
+
+  const fillLight4 = new THREE.PointLight(0xDDCCAA, 0.5);
+  fillLight4.position.set(-10000, 5000, 10000);
+  scene.add(fillLight4);
+
+  // Directional light for subtle direction (not strong enough to cause shadows)
+  const sun = new THREE.DirectionalLight(0xFFEECC, 0.6);
   sun.position.set(60000, 100000, -80000);
-  sun.castShadow        = false;
-  sun.matrixAutoUpdate  = false;
+  sun.castShadow = false;
+  sun.matrixAutoUpdate = false;
   sun.updateMatrix();
   scene.add(sun);
-
-  const fill = new THREE.DirectionalLight(0xCCDDEE, 0.5);
-  fill.position.set(-60000, 50000, 80000);
-  fill.castShadow       = false;
-  fill.matrixAutoUpdate = false;
-  fill.updateMatrix();
-  scene.add(fill);
 
   return { sun, ambient };
 }
 
 // ============================================================
-//  SETTINGS UI COMPONENT — ⚙️ SETTINGS ICON
+//  Settings UI
 // ============================================================
 export class SettingsUI {
   private container: HTMLDivElement;
   private isOpen: boolean = false;
   private settings: {
-    terrainDetail: number;
     sunBrightness: number;
     fogDensity: number;
     ambientLight: number;
   } = {
-    terrainDetail: 1.0,
     sunBrightness: 1.0,
-    fogDensity: 1.0,
-    ambientLight: 1.0,
+    fogDensity:    1.0,
+    ambientLight:  1.0,
   };
 
-  constructor(scene: THREE.Scene, terrain: InfiniteTerrain, sky: ProceduralSky, lights: { sun: THREE.DirectionalLight; ambient: THREE.AmbientLight }) {
+  constructor(
+    scene: THREE.Scene,
+    terrain: InfiniteTerrain,
+    sky: ProceduralSky,
+    lights: { sun: THREE.DirectionalLight; ambient: THREE.AmbientLight }
+  ) {
     this.container = this.createUI();
     document.body.appendChild(this.container);
     this.setupEventListeners(scene, terrain, sky, lights);
@@ -504,50 +380,40 @@ export class SettingsUI {
           font-family: Arial, sans-serif;
           z-index: 1000;
         }
-        
         .settings-button {
           width: 50px;
           height: 50px;
           border-radius: 50%;
-          background: rgba(100, 100, 100, 0.8);
-          border: 2px solid rgba(200, 200, 200, 0.9);
+          background: rgba(80,80,80,0.8);
+          border: 2px solid rgba(200,200,200,0.9);
           cursor: pointer;
           display: flex;
           align-items: center;
           justify-content: center;
           font-size: 28px;
-          color: rgba(220, 220, 220, 0.9);
+          color: rgba(220,220,220,0.9);
           transition: all 0.3s ease;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+          box-shadow: 0 4px 12px rgba(0,0,0,0.3);
         }
-        
         .settings-button:hover {
-          background: rgba(120, 120, 120, 0.9);
+          background: rgba(100,100,100,0.9);
           transform: rotate(20deg);
         }
-        
         .settings-panel {
           display: none;
           position: absolute;
           top: 70px;
           right: 0;
-          background: rgba(50, 50, 50, 0.95);
-          border: 2px solid rgba(150, 150, 150, 0.8);
+          background: rgba(40,40,40,0.95);
+          border: 2px solid rgba(150,150,150,0.8);
           border-radius: 8px;
           padding: 20px;
           width: 250px;
-          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-          color: rgba(220, 220, 220, 0.95);
+          box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+          color: rgba(220,220,220,0.95);
         }
-        
-        .settings-panel.open {
-          display: block;
-        }
-        
-        .settings-item {
-          margin-bottom: 15px;
-        }
-        
+        .settings-panel.open { display: block; }
+        .settings-item { margin-bottom: 15px; }
         .settings-label {
           display: block;
           font-size: 12px;
@@ -556,125 +422,104 @@ export class SettingsUI {
           text-transform: uppercase;
           letter-spacing: 1px;
         }
-        
         .settings-slider {
           width: 100%;
           height: 6px;
           border-radius: 3px;
-          background: rgba(100, 100, 100, 0.8);
+          background: rgba(100,100,100,0.8);
           outline: none;
           -webkit-appearance: none;
           appearance: none;
         }
-        
         .settings-slider::-webkit-slider-thumb {
           -webkit-appearance: none;
           appearance: none;
           width: 16px;
           height: 16px;
           border-radius: 50%;
-          background: rgba(255, 221, 68, 0.9);
+          background: rgba(255,221,68,0.9);
           cursor: pointer;
-          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
         }
-        
         .settings-slider::-moz-range-thumb {
           width: 16px;
           height: 16px;
           border-radius: 50%;
-          background: rgba(255, 221, 68, 0.9);
+          background: rgba(255,221,68,0.9);
           cursor: pointer;
           border: none;
-          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
         }
-        
         .settings-value {
           display: inline-block;
           float: right;
           font-size: 12px;
-          color: rgba(255, 221, 68, 0.9);
+          color: rgba(255,221,68,0.9);
           font-weight: bold;
         }
       </style>
-      
+
       <button class="settings-button" title="Settings">⚙️</button>
       <div class="settings-panel">
         <div class="settings-item">
-          <label class="settings-label">Terrain Detail</label>
-          <input type="range" class="settings-slider" id="terrain-detail" min="0.5" max="2.0" step="0.1" value="1.0">
-          <span class="settings-value" id="terrain-detail-value">1.0x</span>
-        </div>
-        
-        <div class="settings-item">
           <label class="settings-label">Sun Brightness</label>
-          <input type="range" class="settings-slider" id="sun-brightness" min="0.5" max="2.0" step="0.1" value="1.0">
-          <span class="settings-value" id="sun-brightness-value">1.0x</span>
+          <input type="range" class="settings-slider" id="sun-brightness" min="0.3" max="1.5" step="0.1" value="0.6">
+          <span class="settings-value" id="sun-brightness-value">0.6x</span>
         </div>
-        
         <div class="settings-item">
           <label class="settings-label">Fog Density</label>
-          <input type="range" class="settings-slider" id="fog-density" min="0.5" max="2.0" step="0.1" value="1.0">
+          <input type="range" class="settings-slider" id="fog-density" min="0.3" max="2.0" step="0.1" value="1.0">
           <span class="settings-value" id="fog-density-value">1.0x</span>
         </div>
-        
         <div class="settings-item">
           <label class="settings-label">Ambient Light</label>
-          <input type="range" class="settings-slider" id="ambient-light" min="0.3" max="1.5" step="0.1" value="1.0">
-          <span class="settings-value" id="ambient-light-value">1.0x</span>
+          <input type="range" class="settings-slider" id="ambient-light" min="0.8" max="1.5" step="0.1" value="1.2">
+          <span class="settings-value" id="ambient-light-value">1.2x</span>
         </div>
       </div>
     `;
     return container;
   }
 
-  private setupEventListeners(scene: THREE.Scene, terrain: InfiniteTerrain, sky: ProceduralSky, lights: { sun: THREE.DirectionalLight; ambient: THREE.AmbientLight }): void {
+  private setupEventListeners(
+    scene: THREE.Scene,
+    terrain: InfiniteTerrain,
+    sky: ProceduralSky,
+    lights: { sun: THREE.DirectionalLight; ambient: THREE.AmbientLight }
+  ): void {
     const button = this.container.querySelector('.settings-button') as HTMLButtonElement;
-    const panel = this.container.querySelector('.settings-panel') as HTMLDivElement;
+    const panel  = this.container.querySelector('.settings-panel') as HTMLDivElement;
 
     button.addEventListener('click', () => {
       this.isOpen = !this.isOpen;
       panel.classList.toggle('open');
     });
 
-    // Terrain Detail
-    const terrainDetailSlider = this.container.querySelector('#terrain-detail') as HTMLInputElement;
-    const terrainDetailValue = this.container.querySelector('#terrain-detail-value') as HTMLSpanElement;
-    terrainDetailSlider.addEventListener('input', (e) => {
-      const value = parseFloat((e.target as HTMLInputElement).value);
-      this.settings.terrainDetail = value;
-      terrainDetailValue.textContent = value.toFixed(1) + 'x';
-    });
+    const bind = (
+      id: string,
+      valueId: string,
+      onChange: (v: number) => void
+    ) => {
+      const slider = this.container.querySelector(`#${id}`) as HTMLInputElement;
+      const label  = this.container.querySelector(`#${valueId}`) as HTMLSpanElement;
+      slider.addEventListener('input', (e) => {
+        const v = parseFloat((e.target as HTMLInputElement).value);
+        label.textContent = v.toFixed(1) + 'x';
+        onChange(v);
+      });
+    };
 
-    // Sun Brightness
-    const sunBrightnessSlider = this.container.querySelector('#sun-brightness') as HTMLInputElement;
-    const sunBrightnessValue = this.container.querySelector('#sun-brightness-value') as HTMLSpanElement;
-    sunBrightnessSlider.addEventListener('input', (e) => {
-      const value = parseFloat((e.target as HTMLInputElement).value);
-      this.settings.sunBrightness = value;
-      sunBrightnessValue.textContent = value.toFixed(1) + 'x';
-      lights.sun.intensity = 2.0 * value;
+    bind('sun-brightness', 'sun-brightness-value', (v) => {
+      this.settings.sunBrightness = v;
+      lights.sun.intensity = 0.6 * v;
     });
-
-    // Fog Density
-    const fogDensitySlider = this.container.querySelector('#fog-density') as HTMLInputElement;
-    const fogDensityValue = this.container.querySelector('#fog-density-value') as HTMLSpanElement;
-    fogDensitySlider.addEventListener('input', (e) => {
-      const value = parseFloat((e.target as HTMLInputElement).value);
-      this.settings.fogDensity = value;
-      fogDensityValue.textContent = value.toFixed(1) + 'x';
+    bind('fog-density', 'fog-density-value', (v) => {
+      this.settings.fogDensity = v;
       if (scene.fog instanceof THREE.FogExp2) {
-        scene.fog.density = 0.000025 * value;
+        scene.fog.density = 0.000012 * v;
       }
     });
-
-    // Ambient Light
-    const ambientLightSlider = this.container.querySelector('#ambient-light') as HTMLInputElement;
-    const ambientLightValue = this.container.querySelector('#ambient-light-value') as HTMLSpanElement;
-    ambientLightSlider.addEventListener('input', (e) => {
-      const value = parseFloat((e.target as HTMLInputElement).value);
-      this.settings.ambientLight = value;
-      ambientLightValue.textContent = value.toFixed(1) + 'x';
-      lights.ambient.intensity = 0.8 * value;
+    bind('ambient-light', 'ambient-light-value', (v) => {
+      this.settings.ambientLight = v;
+      lights.ambient.intensity = 1.2 * v;
     });
   }
 
