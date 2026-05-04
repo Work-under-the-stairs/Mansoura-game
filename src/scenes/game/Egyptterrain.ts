@@ -5,6 +5,13 @@ import * as THREE from 'three';
 //  Procedural sky + infinite terrain + DETAILED TEXTURES + SETTINGS UI
 //  مصر ١٩٧٣: دلتا النيل + الصحراء + سيناء
 //  ✅ HIGH-DETAIL TEXTURES + SETTINGS ICON + FINE-GRAINED SURFACE
+//  ✅ ROCKY COLOR PALETTE (limestone / sandstone cliffs)
+//
+//  COCKPIT FLOOR CLAMP — add this in your render/update loop:
+//    camera.position.y = Math.max(
+//      camera.position.y,
+//      terrain.getMinCameraHeight(camera.position.x, camera.position.z)
+//    );
 // ============================================================
 
 // ---------- Simple Perlin / Value Noise (no dependencies) ----------
@@ -365,34 +372,34 @@ export class InfiniteTerrain {
 
       const rawH = h + 3000;
 
-      // ✅ TERRACOTTA / RUST-ORANGE PALETTE — matched to reference screenshot
-      // Base: warm reddish-orange sandy earth with iron-oxide splotch variation
+      // ✅ ROCKY DESERT PALETTE — light warm stone, grey-tan rock faces, sandy flats
       if (rawH < 5) {
-        color.setHex(0xD9865A);  // muted terracotta (low flat areas)
+        color.setHex(0xD4C4A0);  // flat dusty sand-stone
       } else if (rawH < 40) {
-        color.setHex(0xE8956A);  // soft orange-sand
+        color.setHex(0xC8B890);  // pale sandy rock
       } else if (rawH < 100) {
-        color.setHex(0xE07850);  // mid terracotta-orange
+        color.setHex(0xBDAE85);  // warm beige rock
       } else if (rawH < 250) {
-        color.setHex(0xD46A3A);  // deeper rust-orange
+        color.setHex(0xB09870);  // mid stone — tawny limestone
       } else if (rawH < 600) {
-        color.setHex(0xC85A2A);  // rich burnt sienna
+        color.setHex(0x9E8860);  // darker rocky face
       } else {
-        color.setHex(0xBF4F22);  // deep rust for high ridges
+        color.setHex(0x8C7A58);  // shadowed cliff / ridge stone
       }
 
-      // ✅ SPLOTCH VARIATION — dark reddish-brown patches like in reference image
-      const splotch = detailNoise(wx * 0.00015, wz * 0.00015);
-      const splotchDark = detailNoise(wx * 0.0005, wz * 0.0005);
-      // Darken patches where noise is high (iron-oxide staining effect)
-      if (splotch > 0.62) {
-        color.lerp(new THREE.Color(0x8B3018), (splotch - 0.62) * 2.0); // dark rust splotch
-      } else if (splotchDark > 0.68) {
-        color.lerp(new THREE.Color(0xA03520), (splotchDark - 0.68) * 1.5); // smaller dark patches
+      // ✅ ROCK VARIATION — grey-cool patches for shaded rock faces, warm patches for lit surfaces
+      const rockNoise  = detailNoise(wx * 0.00018, wz * 0.00018);
+      const crackNoise = detailNoise(wx * 0.0006,  wz * 0.0006);
+      if (rockNoise > 0.60) {
+        // Cool grey-stone patches (shaded rock)
+        color.lerp(new THREE.Color(0xA09888), (rockNoise - 0.60) * 1.8);
+      } else if (crackNoise > 0.65) {
+        // Darker crevice / crack lines
+        color.lerp(new THREE.Color(0x7A6E58), (crackNoise - 0.65) * 1.5);
       }
 
-      // ✅ SUBTLE BRIGHTNESS VARIATION for surface texture
-      const variation = detailNoise(wx * 0.0001, wz * 0.0001) * 0.12 - 0.06;
+      // ✅ SUBTLE BRIGHTNESS VARIATION — surface texture micro-detail
+      const variation = detailNoise(wx * 0.0001, wz * 0.0001) * 0.14 - 0.05;
       color.multiplyScalar(1.0 + variation);
 
       colors[i * 3]     = color.r;
@@ -413,6 +420,12 @@ export class InfiniteTerrain {
 
   getHeightAt(x: number, z: number): number {
     return egyptHeight(x, z);
+  }
+
+  // ✅ COCKPIT FLOOR CLAMP — call this every frame and enforce camera.position.y >= result
+  // minClearance: how many units above ground the cockpit must stay (default 80)
+  getMinCameraHeight(x: number, z: number, minClearance = 80): number {
+    return egyptHeight(x, z) + minClearance;
   }
 
   setSunDirection(sunDir: THREE.Vector3): void {

@@ -82,13 +82,7 @@ export class MissionController2 {
     this.engine.notif.show({
       type: 'info',
       title: 'أوامر القيادة',
-      msg: 'انتقل إلى سيناء لحماية الجنود وضباط الجيش',
-      duration: 7000
-    });
-    this.engine.notif.show({
-      type: 'info',
-      title: 'أوامر القيادة',
-      msg: 'عليك حماية طائرة نقل الجنود من الهجمات المعادية',
+      msg: 'انتقل إلى سيناء لحماية الجنود وضباط الجيش وعليك حماية  طائرة نقل الجنود من الهجمات المعادية',
       duration: 7000
     });
 
