@@ -12,6 +12,8 @@ import { applyMobileOptimizations } from '../../utils/MobileOptimizer';
 import { MissionController } from './MissionController';
 import { MissionController2 } from './MissionController2';
 import { TransitionPlane } from './TransitionPlane';
+import { AlliedPlaneManager } from './AlliedPlane';
+
 
 // ✅ النظام الجديد — بديل EXR كاملاً
 import { ProceduralSky, InfiniteTerrain, setupFog, setupLighting } from './Egyptterrain';
@@ -28,6 +30,7 @@ export class Engine {
   private enemies: EnemyManager;
   public combatSystem: CombatSystem;
   private notifications: NotificationSystem;
+  private alliedPlanes: AlliedPlaneManager;
 
   private container: HTMLDivElement;
   private clock = new THREE.Timer();
@@ -136,6 +139,7 @@ export class Engine {
     );
 
     this.enemies = new EnemyManager(this.scene, this.camera, this.cockpit);
+    this.alliedPlanes = new AlliedPlaneManager(this.scene, this.cockpit);
 
     // Companion plane — model loads async via loadingManager
     this.transitionPlane = new TransitionPlane(this.scene, this.loadingManager, this.cockpit);
@@ -258,6 +262,8 @@ export class Engine {
 
     // 2. Clear all active enemies and reset spawn index
     if (this.enemies) this.enemies.clearAll();
+    if(this.alliedPlanes) this.alliedPlanes.clearAll();
+
 
     if (this.projectileManager) {
       (this.projectileManager as any).clearAll?.();
@@ -285,6 +291,9 @@ export class Engine {
     // 7. Restart mission — levelStarted=0 lets animate() call start() next frame
     this.levelStarted = 0;
     console.log('[Engine] Reset complete — mission restarting.');
+  }
+  public launchAllies(count: 1 | 2): void {
+    this.alliedPlanes.launch(count);
   }
 
   // =====================
@@ -354,6 +363,8 @@ export class Engine {
     if (this.transitionPlane) this.transitionPlane?.update();
     if (this.world)           this.world.update(delta, this.cockpit.model?.position, (this.cockpit as any).angles?.yaw ?? 0);
     if (this.enemies)         this.enemies.update(delta);
+    if (this.alliedPlanes)     this.alliedPlanes.update(delta);
+    
     this.projectileManager.update(delta);
     this.combatSystem.update(delta);
 
