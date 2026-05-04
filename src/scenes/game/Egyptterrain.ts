@@ -365,23 +365,34 @@ export class InfiniteTerrain {
 
       const rawH = h + 3000;
 
-      // ✅ ENHANCED COLOR GRADIENTS WITH DETAIL VARIATION
+      // ✅ TERRACOTTA / RUST-ORANGE PALETTE — matched to reference screenshot
+      // Base: warm reddish-orange sandy earth with iron-oxide splotch variation
       if (rawH < 5) {
-        color.setHex(0x8B7355);
+        color.setHex(0xD9865A);  // muted terracotta (low flat areas)
       } else if (rawH < 40) {
-        color.setHex(0xF4D03F);
+        color.setHex(0xE8956A);  // soft orange-sand
       } else if (rawH < 100) {
-        color.setHex(0xE8B923);
+        color.setHex(0xE07850);  // mid terracotta-orange
       } else if (rawH < 250) {
-        color.setHex(0xD4A017);
+        color.setHex(0xD46A3A);  // deeper rust-orange
       } else if (rawH < 600) {
-        color.setHex(0xB8860B);
+        color.setHex(0xC85A2A);  // rich burnt sienna
       } else {
-        color.setHex(0xA0826D);
+        color.setHex(0xBF4F22);  // deep rust for high ridges
       }
 
-      // ✅ ADD SUBTLE COLOR VARIATION FOR DETAIL
-      const variation = detailNoise(wx * 0.0001, wz * 0.0001) * 0.1;
+      // ✅ SPLOTCH VARIATION — dark reddish-brown patches like in reference image
+      const splotch = detailNoise(wx * 0.00015, wz * 0.00015);
+      const splotchDark = detailNoise(wx * 0.0005, wz * 0.0005);
+      // Darken patches where noise is high (iron-oxide staining effect)
+      if (splotch > 0.62) {
+        color.lerp(new THREE.Color(0x8B3018), (splotch - 0.62) * 2.0); // dark rust splotch
+      } else if (splotchDark > 0.68) {
+        color.lerp(new THREE.Color(0xA03520), (splotchDark - 0.68) * 1.5); // smaller dark patches
+      }
+
+      // ✅ SUBTLE BRIGHTNESS VARIATION for surface texture
+      const variation = detailNoise(wx * 0.0001, wz * 0.0001) * 0.12 - 0.06;
       color.multiplyScalar(1.0 + variation);
 
       colors[i * 3]     = color.r;
