@@ -239,7 +239,7 @@ private showWinPopup() {
         position: absolute;
         top: 0; left: 0; right: 0;
         height: 3px;
-        background: linear-gradient(90deg, var(--red), #c0392b, var(--red));
+        background: #50652C;
       }
 
       .win-box::after {
