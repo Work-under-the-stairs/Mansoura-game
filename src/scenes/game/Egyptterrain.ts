@@ -367,17 +367,17 @@ export class InfiniteTerrain {
 
       // ✅ ENHANCED COLOR GRADIENTS WITH DETAIL VARIATION
       if (rawH < 5) {
-        color.setHex(0x8B7355);
+        color.setHex(0xE8C97A);  // pale sandy gold (was muddy brown)
       } else if (rawH < 40) {
-        color.setHex(0xF4D03F);
+        color.setHex(0xF4D03F);  // bright yellow sand (unchanged)
       } else if (rawH < 100) {
-        color.setHex(0xE8B923);
+        color.setHex(0xE8B923);  // warm sand (unchanged)
       } else if (rawH < 250) {
-        color.setHex(0xD4A017);
+        color.setHex(0xD4A017);  // golden sand (unchanged)
       } else if (rawH < 600) {
-        color.setHex(0xB8860B);
+        color.setHex(0xE07B20);  // burnt orange (was dark brown)
       } else {
-        color.setHex(0xA0826D);
+        color.setHex(0xF0934A);  // light orange (was brownish tan)
       }
 
       // ✅ ADD SUBTLE COLOR VARIATION FOR DETAIL
