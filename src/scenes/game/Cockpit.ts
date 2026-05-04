@@ -83,13 +83,13 @@ export class Cockpit {
                 this.projectileManager,
             );
 
-            console.log('Cockpit Loaded & Flight Ready!');
+            // console.log('Cockpit Loaded & Flight Ready!');
         },
         (progress) => {
-            console.log(`Loading: ${(progress.loaded / progress.total * 100).toFixed(2)}%`);
+            // console.log(`Loading: ${(progress.loaded / progress.total * 100).toFixed(2)}%`);
         },
         (error) => {
-            console.error('Error loading cockpit:', error);
+            // console.error('Error loading cockpit:', error);
         });
     }
 
