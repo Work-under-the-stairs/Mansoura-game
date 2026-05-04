@@ -260,7 +260,7 @@ private showWinPopup() {
       }
 
       .win-header {
-        background: linear-gradient(90deg, var(--red) 0%, #6b1212 50%, var(--red) 100%);
+        background: #50652c;
         padding: 10px 20px;
         display: flex;
         align-items: center;
