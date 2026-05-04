@@ -86,7 +86,6 @@ export class Engine {
     this.container.style.inset = '0';
     this.container.style.zIndex = '5';
     // ✅ لون الـ background يطابق لون ضباب EgyptTerrain1973 (بيج رملي)
-    // لو السماء البروسيديورال شغالة مش هتشوف ده أبداً، بس لازم يتطابق
     this.container.style.background = '#C8B89A';
     document.body.appendChild(this.container);
 
@@ -99,7 +98,6 @@ export class Engine {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.toneMapping         = THREE.ACESFilmicToneMapping;
-    // ✅ رفعنا الـ exposure — يخلي الكل أكثر إضاءة بدون تكلفة على الأداء
     this.renderer.toneMappingExposure = 1.25;
     this.renderer.outputColorSpace    = THREE.SRGBColorSpace;
     this.renderer.shadowMap.enabled   = !this.isMobile;
@@ -116,7 +114,6 @@ export class Engine {
       this.scene,
       this.loadingManager,
       {
-        // ✅ حذفنا skyExrUrl خالص — مفيش EXR
         terrainSize:     42000,
         terrainSegments: this.isMobile ? 100 : 420,
         riverWidth:      420,
@@ -134,6 +131,13 @@ export class Engine {
       this.loadingManager,
       this.projectileManager,
     );
+
+    // ✅ Wire terrain-height query so Cockpit can enforce minimum altitude.
+    // We do this before terrain is created — the lambda captures `this` and
+    // will safely return 0 until InfiniteTerrain is ready (first frame or two).
+    this.cockpit.getTerrainHeight = (x: number, z: number): number => {
+      return this.terrain?.getHeightAt(x, z) ?? 0;
+    };
 
     this.enemies = new EnemyManager(this.scene, this.camera, this.cockpit);
 
@@ -167,8 +171,6 @@ export class Engine {
     // ✅ ٢ ظهر بالضبط (0.5 = ظهر، 0.58 = ٢ ظهر تقريباً)
     this.sky.setTimeOfDay(0.58);
 
-    // ✅ خفّضنا الـ HemisphereLight — setupLighting بيضيف ambient + fill كافيين
-    //    لو خلّيناه بنفس القيمة بيتضاعف الضوء ويبقى overexposed
     const hemi = new THREE.HemisphereLight(0xC8E0FF, 0xA89060, 0.5);
     hemi.matrixAutoUpdate = false;
     hemi.updateMatrix();
@@ -252,11 +254,9 @@ export class Engine {
   public resetForReplay(): void {
     console.log('[Engine] Resetting for replay...');
 
-    // 1. Cancel pending mission timers, clear decision cards, reset state machines
     if (this.missionController)  this.missionController.reset();
     if (this.missionController2) this.missionController2.reset();
 
-    // 2. Clear all active enemies and reset spawn index
     if (this.enemies) this.enemies.clearAll();
 
     if (this.projectileManager) {
@@ -268,7 +268,6 @@ export class Engine {
       }
     }
 
-    // 4. Reset health + combat system (hides death screen, resets HP bar to 100)
     if (this.combatSystem) this.combatSystem.reset();
 
     if (this.cockpit?.model) {
@@ -279,10 +278,8 @@ export class Engine {
       (this.cockpit as any).currentSpeed = (this.cockpit as any).config.minSpeed;
     }
 
-    // 6. Snap companion plane back to cockpit
     this.transitionPlane?.snapToCockpit();
 
-    // 7. Restart mission — levelStarted=0 lets animate() call start() next frame
     this.levelStarted = 0;
     console.log('[Engine] Reset complete — mission restarting.');
   }
@@ -292,11 +289,8 @@ export class Engine {
   // =====================
 
   private setupLights(): void {
-    // ✅ استخدمنا setupLighting من EgyptTerrain1973
-    // بترجع sun و ambient لو محتجتيهم بعدين
     setupLighting(this.scene);
 
-    // ✅ HemisphereLight ثابت زي الأصل
     const hemi = new THREE.HemisphereLight(0xe7f3ff, 0x97886a, 1.0);
     hemi.matrixAutoUpdate = false;
     hemi.updateMatrix();
@@ -304,7 +298,6 @@ export class Engine {
   }
 
   private createEnvironment(): void {
-    // ✅ setupFog من EgyptTerrain1973 — بيخفي الـ horizon seam
     setupFog(this.scene);
   }
 
@@ -316,8 +309,6 @@ export class Engine {
     if (this.combatSystem && options) {
       const hs = (this.combatSystem as any).health;
 
-      // On Replay: reset in-place ONLY — never call options.onRestart because
-      // that creates a new Engine in main.ts which crashes (loadingScene is gone)
       hs.onRestartCallback = () => {
         this.resetForReplay();
       };
@@ -357,7 +348,6 @@ export class Engine {
     this.projectileManager.update(delta);
     this.combatSystem.update(delta);
 
-    // ✅ تحديث السماء والتضاريس كل frame
     if (this.sky)     this.sky.update(this.camera, delta);
     if (this.terrain && this.cockpit.model) {
       this.terrain.update(this.cockpit.model.position);
@@ -370,20 +360,12 @@ export class Engine {
       this.mobileOptimized = true;
     }
 
-    // levelStarted=0 → start level 1
-    // levelStarted=1 → level 1 running (victory fires via missionController.onVictory)
-    // levelStarted=2 → level 2 running
     if (!this.levelStarted && this.cockpit.model) {
       if (this.missionController) {
         this.missionController.start();
         this.levelStarted = 1;
       }
     }
-    // if (this.levelStarted === 1 && this.missionController?.getMissionState()) {
-    //   console.log("Mission state indicates victory, starting next level...");
-    //   this.levelStarted = 2;
-    // }
-
   };
 
   public destroy(): void {
@@ -401,7 +383,6 @@ export class Engine {
     if (this.combatSystem)         this.combatSystem.dispose();
     if (this.notifications)        this.notifications.destroy();
 
-    // ✅ تنظيف السماء والتضاريس
     if (this.sky) {
       (this.sky as any).mesh && this.scene.remove((this.sky as any).mesh);
       this.sky = null;
@@ -424,7 +405,6 @@ export class Engine {
     this.readyCallback = callback;
   }
 
-  // ✅ لو محتاجة تعرفي الطيارة فوق الأرض ولا لأ
   public getGroundHeight(x: number, z: number): number {
     return this.terrain?.getHeightAt(x, z) ?? 0;
   }
