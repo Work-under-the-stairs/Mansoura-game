@@ -444,7 +444,7 @@ export class CombatSystem {
 
   private readonly PLAYER_BULLET_DMG = 25;
   private readonly PLAYER_MISSILE_DMG = 50;
-  private readonly ENEMY_HIT_R_BULLET = 9000;
+  private readonly ENEMY_HIT_R_BULLET = 4000;
   private readonly ENEMY_HIT_R_MISSILE = 4000;
 
   private readonly bulletGeo: THREE.CylinderGeometry;

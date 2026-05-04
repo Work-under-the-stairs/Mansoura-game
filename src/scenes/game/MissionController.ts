@@ -18,6 +18,8 @@ export class MissionController {
   private pendingTimers: ReturnType<typeof setTimeout>[] = [];
   private victoryDeclared = false;
 
+  private readonly MANSOURA_TOTAL = 6;
+
   /** Called exactly once when level 1 is complete. Wired by Engine. */
   public onVictory: (() => void) | null = null;
 
@@ -40,6 +42,7 @@ export class MissionController {
     this.state = MissionState.START;
     this.enemyKilledCount = 0;
     this.totalInWaveKilled = 0;
+    this.victoryDeclared = false;
   }
 
   // ✅ Helper: tracked setTimeout so we can cancel all on reset
@@ -71,7 +74,7 @@ export class MissionController {
       case MissionState.SOLITARY_PLANE:
         this.later(() => {
           this.engine.notif.show({
-            type: 'warn', title: 'تحذير', msg: 'طيارة معادية تقترب من الخلف!', duration: 3000
+            type: 'warn', title: 'تحذير', msg: 'طيارة معادية تقترب منك!', duration: 3000
           });
           this.spawnWave(1);
         }, 3000);
@@ -108,7 +111,8 @@ export class MissionController {
             this.engine.notif.show({ type: 'warn', title: 'وصلت', msg: 'لقد وصلت إلى المنصورة! استعد للمعركة الكبرى!' });
             this.state = MissionState.MANSOURA_BATTLE;
             this.enemyKilledCount = 0;
-            this.spawnWave(3);
+            // ← بنولد أول طيارة بس، والباقي يجوا واحدة واحدة بعد كل قتلة
+            this.spawnSingleEnemy();
           }, 6000);
         }, 4000);
         break;
@@ -130,13 +134,21 @@ export class MissionController {
     }
     else if (this.state === MissionState.MANSOURA_BATTLE) {
       this.enemyKilledCount++;
-      if (this.enemyKilledCount < 3) {
-        // Spawn the next enemy until all 3 are killed
-        this.later(() => this.spawnWave(1), 2000);
+
+      if (this.enemyKilledCount >= this.MANSOURA_TOTAL) {
+        // ✅ كل الـ 6 اتقتلوا — النصر
+        this.later(() => this.victory(), 2000);
       } else {
-        this.later(() => this.victory(), 3000);
+        // ✅ لسه في طيارات — ولد الواحدة الجاية بعد تأخير عشوائي
+        const delay = 2000 + Math.random() * 3000; // بين 2 و 5 ثواني
+        this.later(() => this.spawnSingleEnemy(), delay);
       }
     }
+  }
+
+  // ✅ بتولد طيارة واحدة بس في كل مرة مع offset عشوائي في الظهور
+  private spawnSingleEnemy() {
+    (this.engine as any).enemies.spawnEnemy();
   }
 
   private spawnWave(count: number) {
@@ -145,7 +157,6 @@ export class MissionController {
       (this.engine as any).enemies.spawnEnemy();
     }
   }
-
 
   private showDecision(title: string, text: string, onSelect: (count: number) => void) {
     // 1. إزالة أي بطاقة قرار قديمة
@@ -252,6 +263,7 @@ export class MissionController {
       this.onVictory?.();
     }, 4500);
   }
+
   public getMissionState() {
     return this.victoryDeclared;
   }

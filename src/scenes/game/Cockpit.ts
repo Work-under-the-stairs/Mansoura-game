@@ -8,7 +8,7 @@ import { ProjectileManager } from './ProjectileManager';
 export class Cockpit {
     public model: THREE.Group | null = null;
     public weaponSystem: WeaponSystem | null = null;
-    public currentSpeed = 255;
+    public currentSpeed = 400;
 
     private rotationSpeed = { pitch: 0, roll: 0 };
 
@@ -21,8 +21,8 @@ export class Cockpit {
         sensitivity:      0.0006,
         damping:          0.94,
         maxRotationSpeed: 0.04,
-        minSpeed:         255,
-        maxSpeed:         400,
+        minSpeed:         400,
+        maxSpeed:         600,
         acceleration:     0.03,
         maxPitch:         Math.PI * 0.4,   // ✅ حد أقصى للـ pitch (~72 درجة)
         maxRoll:          Math.PI * 0.35,  // ✅ حد أقصى للـ roll (~63 درجة)

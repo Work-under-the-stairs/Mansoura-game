@@ -85,6 +85,12 @@ export class MissionController2 {
       msg: 'انتقل إلى سيناء لحماية الجنود وضباط الجيش',
       duration: 7000
     });
+    this.engine.notif.show({
+      type: 'info',
+      title: 'أوامر القيادة',
+      msg: 'عليك حماية طائرة نقل الجنود من الهجمات المعادية',
+      duration: 7000
+    });
 
     // 2. After 1s companion plane appears in front (instant snap, same heading/height)
     this.later(() => {
