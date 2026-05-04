@@ -82,13 +82,7 @@ export class MissionController2 {
     this.engine.notif.show({
       type: 'info',
       title: 'أوامر القيادة',
-      msg: 'انتقل إلى سيناء لحماية الجنود وضباط الجيش',
-      duration: 7000
-    });
-    this.engine.notif.show({
-      type: 'info',
-      title: 'أوامر القيادة',
-      msg: 'عليك حماية طائرة نقل الجنود من الهجمات المعادية',
+      msg: 'انتقل إلى سيناء لحماية الجنود وضباط الجيش وعليك حماية  طائرة نقل الجنود من الهجمات المعادية',
       duration: 7000
     });
 
@@ -260,7 +254,7 @@ private showWinPopup() {
       }
 
       .win-header {
-        background: linear-gradient(90deg, var(--red) 0%, #6b1212 50%, var(--red) 100%);
+        background: #50652c;
         padding: 10px 20px;
         display: flex;
         align-items: center;
