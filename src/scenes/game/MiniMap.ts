@@ -314,7 +314,7 @@ export class MiniMap {
     this.modalCanvas.width = size;
     this.modalCanvas.height = size;
     if (vmin < 500) {
-      this.modalCanvas.width = 500;
+      this.modalCanvas.width = 600;
       this.modalCanvas.height = 350;
     }
     this.isModalOpen = true;
