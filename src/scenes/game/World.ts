@@ -41,7 +41,7 @@ export class World {
     this.build();
     this.loadSkyEXR();
 
-    const mapUrl = this.options.mapImageUrl || '/images/map.png';
+    const mapUrl = this.options.mapImageUrl || '/images/map-Picsart-AiImageEnhancer.png';
 
     this.miniMap = new MiniMap({
       mapImageUrl: mapUrl,
