@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import { Cockpit } from './Cockpit';
 
-const ALLY_SPEED     = 5000;   // سرعة الطيارة الحليفة
-const ALLY_LIFETIME  = 12;    // ثواني قبل ما تختفي
+const ALLY_SPEED      = 5000;
+const ALLY_LIFETIME   = 12;
 const ALLY_BASE_SCALE = 120;
 
 export class AlliedPlaneManager {
@@ -12,6 +12,9 @@ export class AlliedPlaneManager {
   private model:   THREE.Object3D | null = null;
   private modelReady = false;
   private allies:  { mesh: THREE.Object3D; velocity: THREE.Vector3; age: number }[] = [];
+
+  // FIX: Track the delayed second-spawn so clearAll() can cancel it before it fires
+  private pendingSpawn: ReturnType<typeof setTimeout> | null = null;
 
   constructor(scene: THREE.Scene, cockpit: Cockpit) {
     this.scene   = scene;
@@ -22,17 +25,17 @@ export class AlliedPlaneManager {
   private loadModel(): void {
     const loader = new GLTFLoader();
     loader.load(
-      '/models/enemy2.glb',   // نفس موديل العدو — بس هنلونه أخضر
+      '/models/enemy2.glb',
       (gltf) => {
         this.model = gltf.scene;
 
-        // لون أخضر/رمادي يميزه عن العدو
         this.model.traverse((child) => {
           if ((child as THREE.Mesh).isMesh) {
             const mesh = child as THREE.Mesh;
             const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-            mats.forEach((m: any) => {
-            //   if (m.color) m.color.set(0x4a8c4a); // أخضر عسكري
+            mats.forEach((_m: any) => {
+              // Optional: tint green to distinguish from enemy
+              // if (m.color) m.color.set(0x4a8c4a);
             });
           }
         });
@@ -46,8 +49,8 @@ export class AlliedPlaneManager {
   }
 
   /**
-   * يطلق count طيارات حليفة من فوق الكوكبت
-   * إذا count=2 يبعتهم بفارق زمني بسيط ويمين/يسار
+   * Launch 1 or 2 allied planes from above the cockpit.
+   * For count=2 the second plane is offset and delayed by 600ms.
    */
   public launch(count: 1 | 2): void {
     if (!this.modelReady || !this.model || !this.cockpit.model) return;
@@ -56,7 +59,12 @@ export class AlliedPlaneManager {
       this._spawnAlly(0, 0);
     } else {
       this._spawnAlly(-2000, 0);
-      setTimeout(() => this._spawnAlly(2000, 0), 600); // تأخير بسيط بينهم
+
+      // FIX: Store the timeout ID so clearAll() can cancel it if called within 600ms
+      this.pendingSpawn = setTimeout(() => {
+        this.pendingSpawn = null;
+        this._spawnAlly(2000, 0);
+      }, 600);
     }
   }
 
@@ -66,7 +74,6 @@ export class AlliedPlaneManager {
     const cockpitPos = new THREE.Vector3();
     this.cockpit.model.getWorldPosition(cockpitPos);
 
-    // ابدأ من فوق الكوكبت بشوية
     const spawnPos = cockpitPos.clone();
     spawnPos.y += 1500;
 
@@ -77,17 +84,15 @@ export class AlliedPlaneManager {
     right.setFromMatrixColumn(this.cockpit.model.matrixWorld, 0).normalize();
 
     spawnPos.addScaledVector(right, offsetX);
-    spawnPos.addScaledVector(forward, 2000); // شوية قدام الكوكبت
+    spawnPos.addScaledVector(forward, 2000);
 
     const ally = this.model.clone(true);
     ally.position.copy(spawnPos);
 
-    // توجيه للأمام (نفس اتجاه الكوكبت)
     const targetPos = spawnPos.clone().addScaledVector(forward, 10000);
     ally.lookAt(targetPos);
-    ally.rotateY(-Math.PI / 2); // تصحيح محور GLB
+    ally.rotateY(-Math.PI / 2);
 
-    // سرعة للأمام
     const velocity = forward.clone().multiplyScalar(ALLY_SPEED);
 
     this.scene.add(ally);
@@ -95,14 +100,12 @@ export class AlliedPlaneManager {
   }
 
   public update(delta: number): void {
+    // FIX: Reverse iterate so splice doesn't skip entries
     for (let i = this.allies.length - 1; i >= 0; i--) {
       const ally = this.allies[i];
       ally.age += delta;
-
-      // حرك للأمام
       ally.mesh.position.addScaledVector(ally.velocity, delta);
 
-      // بعد ALLY_LIFETIME ثانية، إزله
       if (ally.age >= ALLY_LIFETIME) {
         this.scene.remove(ally.mesh);
         this.allies.splice(i, 1);
@@ -111,6 +114,12 @@ export class AlliedPlaneManager {
   }
 
   public clearAll(): void {
+    // FIX: Cancel any pending second-ally spawn before it fires into a cleared scene
+    if (this.pendingSpawn !== null) {
+      clearTimeout(this.pendingSpawn);
+      this.pendingSpawn = null;
+    }
+
     for (const a of this.allies) this.scene.remove(a.mesh);
     this.allies = [];
   }

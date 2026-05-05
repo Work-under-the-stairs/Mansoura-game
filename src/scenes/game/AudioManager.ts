@@ -7,7 +7,7 @@ export class AudioManager {
   private activeMissileEngines: Map<number, THREE.PositionalAudio> = new Map();
   private nextId: number = 0;
 
-  // ✅ كائنات صوتية ثابتة لمنع تسريب الذاكرة
+  // ✅ Persistent audio objects to prevent memory leaks
   private bulletAudio: THREE.Audio | null = null;
   private launchAudio: THREE.Audio | null = null;
 
@@ -16,11 +16,11 @@ export class AudioManager {
     camera.add(this.listener);
     this.audioLoader = new THREE.AudioLoader();
 
-    // تجهيز كائنات الصوت مسبقاً
+    // Pre-create audio objects
     this.bulletAudio = new THREE.Audio(this.listener);
     this.launchAudio = new THREE.Audio(this.listener);
 
-    // تحميل الملفات
+    // Load files
     this.load('bullet', '/sounds/bullet_fire.mp3');
     this.load('launch', '/sounds/missile_launch.mp3');
     this.load('engine', '/sounds/missile_engine_loop.mp3');
@@ -29,8 +29,7 @@ export class AudioManager {
   private load(name: string, url: string) {
     this.audioLoader.load(url, (buffer) => {
       this.sounds.set(name, buffer);
-      
-      // ربط الـ buffer بالكائنات الثابتة بمجرد تحميلها
+
       if (name === 'bullet' && this.bulletAudio) {
         this.bulletAudio.setBuffer(buffer);
         this.bulletAudio.setVolume(0.4);
@@ -48,32 +47,30 @@ export class AudioManager {
     }
   }
 
-  // ── Bullet Sounds (Mended) ─────────────────────────────────────────────
+  // ── Bullet Sounds ──────────────────────────────────────────────
   public playBulletFire(): void {
-    // ✅ نستخدم نفس الكائن، نوقفه ثم نشغله بدلاً من إنشاء واحد جديد
     if (this.bulletAudio && this.bulletAudio.buffer) {
       if (this.bulletAudio.isPlaying) this.bulletAudio.stop();
       this.bulletAudio.play();
     }
   }
 
-  // ── Missile Sounds (Mended) ─────────────────────────────────────────────
+  // ── Missile Sounds ─────────────────────────────────────────────
   public playMissileLaunch(): void {
-    // ✅ نستخدم نفس الكائن لمنع تراكم الأصوات في الذاكرة
     if (this.launchAudio && this.launchAudio.buffer) {
       if (this.launchAudio.isPlaying) this.launchAudio.stop();
       this.launchAudio.play();
     }
   }
 
-  // محركات الصواريخ (تُنشأ وتُحذف لأنها Positional وتحتاج تتبع مكاني)
+  // Positional engine sounds (created/removed per missile — need spatial tracking)
   public startMissileEngine(): number {
     const buffer = this.sounds.get('engine');
     if (!buffer) return -1;
 
     const id = this.nextId++;
     const sound = new THREE.PositionalAudio(this.listener);
-    
+
     sound.setBuffer(buffer);
     sound.setLoop(true);
     sound.setVolume(0.5);
@@ -89,8 +86,34 @@ export class AudioManager {
     if (sound) {
       if (sound.isPlaying) sound.stop();
       this.activeMissileEngines.delete(id);
-      // ✅ مساعدة الـ Garbage Collector في تنظيف الذاكرة
-      sound.disconnect(); 
+      // FIX: Help GC clean up the WebAudio graph node
+      sound.disconnect();
     }
+  }
+
+  // FIX: Stop ALL active missile engines at once — call this on reset/dispose
+  // to prevent WebAudio node leaks when missiles are destroyed mid-flight
+  public stopAll(): void {
+    for (const [id] of this.activeMissileEngines) {
+      this.stopMissileEngine(id);
+    }
+  }
+
+  // FIX: Full cleanup — call when the game is being torn down entirely
+  public dispose(): void {
+    this.stopAll();
+
+    if (this.bulletAudio) {
+      if (this.bulletAudio.isPlaying) this.bulletAudio.stop();
+      this.bulletAudio.disconnect();
+      this.bulletAudio = null;
+    }
+    if (this.launchAudio) {
+      if (this.launchAudio.isPlaying) this.launchAudio.stop();
+      this.launchAudio.disconnect();
+      this.launchAudio = null;
+    }
+
+    this.sounds.clear();
   }
 }

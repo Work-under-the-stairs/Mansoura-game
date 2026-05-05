@@ -125,6 +125,8 @@ export class EnemyWeaponSystem {
       const entry = this.flashMap.get(key);
       if (entry) {
         enemy.remove(entry.flash.group);
+        entry.flash.core.material.dispose();
+        entry.flash.secondary.material.dispose();
         this.flashMap.delete(key);
       }
     });

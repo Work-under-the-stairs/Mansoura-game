@@ -94,12 +94,12 @@ export class Engine {
 
     this.renderer = new THREE.WebGLRenderer({
       antialias:              !this.isMobile,
-      powerPreference:        'high-performance',
+      powerPreference:        this.isMobile ? 'low-power' : 'high-performance',
       logarithmicDepthBuffer: !this.isMobile,
     });
 
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    this.renderer.setPixelRatio(this.isMobile ? 1.0 : Math.min(window.devicePixelRatio, 1.5));
     this.renderer.toneMapping         = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.25;
     this.renderer.outputColorSpace    = THREE.SRGBColorSpace;
@@ -390,6 +390,7 @@ export class Engine {
     if (this.world)                this.world.dispose();
     if (this.mobileControls)       this.mobileControls.destroy();
     if (this.cockpit.weaponSystem) this.cockpit.weaponSystem.dispose();
+    if (this.cockpit) (this.cockpit as any).dispose();
     if (this.projectileManager)    this.projectileManager.dispose();
     if (this.combatSystem)         this.combatSystem.dispose();
     if (this.notifications)        this.notifications.destroy();
@@ -409,7 +410,21 @@ export class Engine {
     this.renderer.dispose();
     this.container.remove();
 
-    // console.log('Engine destroyed safely.');
+    this.scene.traverse((object) => {
+      if (object instanceof THREE.Mesh) {
+        if (object.geometry) {
+          object.geometry.dispose();
+        }
+        if (object.material) {
+          if (Array.isArray(object.material)) {
+            for (const material of object.material) material.dispose();
+          } else {
+            object.material.dispose();
+          }
+        }
+      }
+    });
+    // console.log("Engine destroyed safely.");
   }
 
   public onReady(callback: () => void): void {
