@@ -72,6 +72,12 @@ export class MissionController2 {
     });
 
     this.later(() => {
+      this.engine.notif.show({
+        type: 'info',
+        title: 'أوامر القيادة',
+        msg: 'لقد وصلت إلى سيناء، ويجب عليك إسقاط 6 طائرات معادية لإتمام النصر.',
+        duration: 7000
+      });
       if (this.engine.transitionPlane) {
         this.engine.transitionPlane.appearInFront();
       }
@@ -142,7 +148,7 @@ export class MissionController2 {
     audio.preload = 'auto';
 
     const startTime = 193;
-    const endTime   = 207;
+    const endTime = 207;
 
     const playClip = () => {
       audio.currentTime = startTime;
@@ -415,7 +421,7 @@ export class MissionController2 {
     clickSound.volume = 0.3;
 
     document.getElementById('win-btn-retry')?.addEventListener('click', () => {
-      clickSound.play().catch(() => {});
+      clickSound.play().catch(() => { });
       setTimeout(() => {
         window.location.href = '/';
       }, 100);
@@ -446,17 +452,17 @@ export class MissionController2 {
       document.body.appendChild(confetti);
 
       const duration = Math.random() * 3 + 2;
-      const delay    = Math.random() * 2;
-      const endX     = (Math.random() - 0.5) * 200;
+      const delay = Math.random() * 2;
+      const endX = (Math.random() - 0.5) * 200;
 
       confetti.animate([
-        { transform: `translate(0, 0) rotate(0deg)`,                                                              opacity: 0.8 },
-        { transform: `translate(${endX}px, ${window.innerHeight + 100}px) rotate(${Math.random() * 360}deg)`, opacity: 0   }
+        { transform: `translate(0, 0) rotate(0deg)`, opacity: 0.8 },
+        { transform: `translate(${endX}px, ${window.innerHeight + 100}px) rotate(${Math.random() * 360}deg)`, opacity: 0 }
       ], {
         duration: duration * 1000,
-        delay:    delay * 1000,
-        easing:   'cubic-bezier(0.25, 0.46, 0.45, 0.94)',
-        fill:     'forwards'
+        delay: delay * 1000,
+        easing: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)',
+        fill: 'forwards'
       });
 
       setTimeout(() => confetti.remove(), (duration + delay) * 1000 + 500);

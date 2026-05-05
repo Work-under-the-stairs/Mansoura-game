@@ -23,7 +23,7 @@ export class MissionController {
   /** Called exactly once when level 1 is complete. Wired by Engine. */
   public onVictory: (() => void) | null = null;
 
-  constructor(private engine: Engine) {}
+  constructor(private engine: Engine) { }
 
   public start() {
     this.runStateLogic();
@@ -65,6 +65,12 @@ export class MissionController {
           duration: 5000
         });
         this.later(() => {
+          this.engine.notif.show({
+            type: 'info',
+            title: 'مهمة أولى',
+            msg: 'أنت في طريقك إلى المنصورة، ويجب عليك إسقاط 3 طائرات معادية قبل الوصول إلى المنصورة.',
+            duration: 5000
+          });
           this.state = MissionState.FIRST_WAVE;
           this.spawnWave(2);
         }, 6000);
@@ -125,7 +131,11 @@ export class MissionController {
         this.later(() => {
           this.engine.notif.show({ type: 'info', title: 'ملاحة', msg: 'أنت تقترب من هدفك في المنصورة...' });
           this.later(() => {
-            this.engine.notif.show({ type: 'warn', title: 'وصلت', msg: 'لقد وصلت إلى المنصورة! استعد للمعركة الكبرى!' });
+            this.engine.notif.show({
+              type: 'warn',
+              title: 'وصلت',
+              msg: 'لقد وصلت إلى المنصورة! يجب عليك إسقاط 6 طائرات معادية.',
+            });
             this.state = MissionState.MANSOURA_BATTLE;
             this.enemyKilledCount = 0;
             // ← بنولد أول طيارة بس، والباقي يجوا واحدة واحدة بعد كل قتلة
