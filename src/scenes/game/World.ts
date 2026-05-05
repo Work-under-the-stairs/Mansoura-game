@@ -41,11 +41,11 @@ export class World {
     this.build();
     this.loadSkyEXR();
 
-    const mapUrl = this.options.mapImageUrl || '/images/egypt-map.png';
+    const mapUrl = this.options.mapImageUrl || '/images/map.png';
 
     this.miniMap = new MiniMap({
       mapImageUrl: mapUrl,
-      width:  200,
+      width:  500,
       height: 200
     });
     

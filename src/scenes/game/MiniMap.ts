@@ -53,10 +53,10 @@ export class MiniMap {
     // ── Hidden mini-map canvas (used for modal rendering) ──────────────────
     this.container = document.createElement('div');
     this.container.id = 'game-minimap-container';
-    this.setupContainer(options.width || 200, options.height || 200);
+    this.setupContainer(options.width || 300, options.height || 200);
 
     this.canvas = document.createElement('canvas');
-    this.canvas.width  = options.width  || 200;
+    this.canvas.width  = options.width  || 300;
     this.canvas.height = options.height || 200;
     this.canvas.style.display = 'block';
     this.container.appendChild(this.canvas);
@@ -143,15 +143,15 @@ export class MiniMap {
   /** Returns arrow container size in px: 11vmin, clamped 52px–110px */
   private getArrowSizePx(): number {
     const vmin = Math.min(window.innerWidth, window.innerHeight);
-    return Math.max(52, Math.min(110, Math.round(vmin * 0.11)));
+    return Math.max(52, Math.min(150, Math.round(vmin * 0.15)));
   }
 
   // ── Container & Style Setup ──────────────────────────────────────────────
 
   private setupContainer(w: number, h: number) {
     this.container.style.position     = 'fixed';
-    this.container.style.top          = '-9999px';
-    this.container.style.left         = '-9999px';
+    this.container.style.top          = '-999px';
+    this.container.style.left         = '-999px';
     this.container.style.width        = `${w}px`;
     this.container.style.height       = `${h}px`;
     this.container.style.overflow     = 'hidden';
@@ -308,7 +308,7 @@ export class MiniMap {
 
   private openModal() {
     const vmin    = Math.min(window.innerWidth, window.innerHeight);
-    const ratio   = vmin < 500 ? 0.90 : 0.80;   // 90% on small/mobile, 80% on desktop
+    const ratio   = vmin < 500 ? 0.95 : 0.80;   // 90% on small/mobile, 80% on desktop
     const size    = Math.floor(vmin * ratio);
     this.modalCanvas.width  = size;
     this.modalCanvas.height = size;
