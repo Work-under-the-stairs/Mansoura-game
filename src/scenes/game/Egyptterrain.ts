@@ -134,6 +134,7 @@ export class ProceduralSky {
       },
       side: THREE.BackSide,
       depthWrite: false,
+      // fog: true,
     });
 
     this.mesh = new THREE.Mesh(geo, this.material);
@@ -146,7 +147,7 @@ export class ProceduralSky {
   private createSunObject(scene: THREE.Scene): void {
     const sunGlowGeo = new THREE.SphereGeometry(15000, 32, 32);
     const sunGlowMat = new THREE.MeshBasicMaterial({
-      color: 0xFFDD44,
+      color: 0xFFEE99,
       transparent: true,
       opacity: 0.6,
       fog: false,
@@ -226,11 +227,15 @@ export class InfiniteTerrain {
         varying vec3 vPosition;
         varying vec2 vUv;
 
+        #include <fog_pars_vertex>
+
         void main() {
           vNormal   = normalize(normalMatrix * normal);
           vPosition = position;
           vUv       = uv;
           gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+
+          #include <fog_vertex>
         }
       `,
       fragmentShader: `
@@ -242,29 +247,34 @@ export class InfiniteTerrain {
         uniform sampler2D uSandTexture;
         uniform int       uTextureLoaded;
 
+        #include <fog_pars_fragment>
         void main() {
           vec3 texColor;
 
           if (uTextureLoaded == 1) {
             // Tile the texture 32x across each chunk
-            texColor = texture2D(uSandTexture, vUv * 32.0).rgb;
+            texColor = texture2D(uSandTexture, vUv * 1.0).rgb;
           } else {
             // Fallback yellow sand color while texture loads
             texColor = vec3(0.93, 0.85, 0.54);
           }
 
           // Diffuse lighting
-          float diffuse = max(0.3, dot(vNormal, normalize(uSunDir)));
+          // float diffuse = max(0.3, dot(vNormal, normalize(uSunDir)));
+          float diffuse = 0.8;
           float ambient = 0.5;
           float light   = ambient + diffuse * 0.7;
 
           // Specular highlight
           vec3  viewDir  = normalize(-vPosition);
           vec3  halfDir  = normalize(normalize(uSunDir) + viewDir);
-          float specular = pow(max(0.0, dot(vNormal, halfDir)), 16.0) * 0.2;
+          // float specular = pow(max(0.0, dot(vNormal, halfDir)), 16.0) * 0.2;
+          float specular = 0.0;
 
           vec3 finalColor = texColor * light + vec3(1.0) * specular;
           gl_FragColor    = vec4(finalColor, 1.0);
+
+          #include <fog_fragment>
         }
       `,
       uniforms: {
@@ -273,12 +283,14 @@ export class InfiniteTerrain {
         uTextureLoaded: { value: 0 },
       },
       side: THREE.FrontSide,
+      // fog: true,
     });
 
     // Load sand texture
     const loader = new THREE.TextureLoader();
     loader.load(
-      '/images/d0be88cc1c3bf4c4b76b2925ebec0014.jpg',
+      // '/images/d0be88cc1c3bf4c4b76b2925ebec0014.jpg',
+      '/images/gg.png',
       (tex) => {
         tex.wrapS    = THREE.RepeatWrapping;
         tex.wrapT    = THREE.RepeatWrapping;
@@ -357,6 +369,7 @@ export class InfiniteTerrain {
     this.material.uniforms.uSunDir.value.copy(sunDir.normalize());
   }
 }
+
 
 // ============================================================
 //  DistanceFog

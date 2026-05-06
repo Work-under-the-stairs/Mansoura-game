@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { World } from './World';
+// import { World } from './World';
 import { Cockpit } from './Cockpit';
 import { Controls } from './Controls';
 import { MobileControls } from './MobileControls';
@@ -26,7 +26,7 @@ export class Engine {
   private renderer: THREE.WebGLRenderer;
   private cockpit: Cockpit;
   private controls: Controls;
-  private world: World;
+  // private world: World;
   private enemies: EnemyManager;
   public combatSystem: CombatSystem;
   private notifications: NotificationSystem;
@@ -52,6 +52,7 @@ export class Engine {
   // ✅ مراجع النظام الجديد
   private sky: ProceduralSky | null = null;
   private terrain: InfiniteTerrain | null = null;
+
 
   constructor(loadingScene: LoadingScene) {
     this.loadingScene   = loadingScene;
@@ -79,6 +80,8 @@ export class Engine {
     );
     this.camera.position.set(450, 5450, 6200);
     this.camera.lookAt(900, 240, -12000);
+
+
 
     const existing = document.getElementById('game-world-root');
     if (existing) existing.remove();
@@ -113,17 +116,17 @@ export class Engine {
     this.controls       = new Controls();
     this.mobileControls = new MobileControls(this.container, this.controls);
 
-    this.world = new World(
-      this.scene,
-      this.loadingManager,
-      {
-        terrainSize:     42000,
-        terrainSegments: this.isMobile ? 100 : 420,
-        riverWidth:      420,
-        cloudCount:      this.isMobile ? 3 : 10,
-      },
-      this.renderer,
-    );
+    // this.world = new World(
+    //   this.scene,
+    //   this.loadingManager,
+    //   {
+    //     terrainSize:     42000,
+    //     terrainSegments: this.isMobile ? 100 : 420,
+    //     riverWidth:      420,
+    //     cloudCount:      this.isMobile ? 3 : 10,
+    //   },
+    //   this.renderer,
+    // );
 
     this.projectileManager = new ProjectileManager(this.scene);
 
@@ -171,9 +174,12 @@ export class Engine {
     // ✅ السماء والتضاريس — بعد setupLights عشان الضوء يكون جاهز
     this.sky     = new ProceduralSky(this.scene);
     this.terrain = new InfiniteTerrain(this.scene);
-
+    
+    // this.buildings = new EgyptBuildings(this.scene);
+    // this.vegetation = new EgyptVegetation(this.scene);
+    // this.settlements = new EgyptSettlements(this.scene);
     // ✅ ٢ ظهر بالضبط (0.5 = ظهر، 0.58 = ٢ ظهر تقريباً)
-    this.sky.setTimeOfDay(0.58);
+    // this.sky.setTimeOfDay(0.58);
 
     const hemi = new THREE.HemisphereLight(0xC8E0FF, 0xA89060, 0.5);
     hemi.matrixAutoUpdate = false;
@@ -206,6 +212,7 @@ export class Engine {
         this.missionController2.start();
       }
     };
+
   }
 
   // =====================
@@ -308,6 +315,11 @@ export class Engine {
 
   private createEnvironment(): void {
     setupFog(this.scene);
+    // this.scene.fog = new THREE.Fog(
+    //   0xcad9e6,
+    //   this.isMobile ? 5000 : 9000,
+    //   this.isMobile ? 30000 : 52000,
+    // );
   }
 
   // =====================
@@ -352,7 +364,7 @@ export class Engine {
 
     if (this.cockpit)         this.cockpit.update(delta);
     if (this.transitionPlane) this.transitionPlane?.update();
-    if (this.world)           this.world.update(delta, this.cockpit.model?.position, (this.cockpit as any).angles?.yaw ?? 0);
+    // if (this.world)           this.world.update(delta, this.cockpit.model?.position, (this.cockpit as any).angles?.yaw ?? 0);
     if (this.enemies)         this.enemies.update(delta);
     if (this.alliedPlanes)     this.alliedPlanes.update(delta);
     
@@ -387,7 +399,7 @@ export class Engine {
     if (this.missionController2) { this.missionController2.reset(); this.missionController2 = null; }
 
     if (this.transitionPlane)      { this.transitionPlane.dispose(); this.transitionPlane = null; }
-    if (this.world)                this.world.dispose();
+    // if (this.world)                this.world.dispose();
     if (this.mobileControls)       this.mobileControls.destroy();
     if (this.cockpit.weaponSystem) this.cockpit.weaponSystem.dispose();
     if (this.projectileManager)    this.projectileManager.dispose();
@@ -398,16 +410,23 @@ export class Engine {
       (this.sky as any).mesh && this.scene.remove((this.sky as any).mesh);
       this.sky = null;
     }
+    // if (this.terrain) {
+    //   (this.terrain as any).chunks?.forEach((chunk: any) => {
+    //     this.scene.remove(chunk.mesh);
+    //     chunk.mesh.geometry.dispose();
+    //   });
+    //   this.terrain = null;
+    // }
     if (this.terrain) {
-      (this.terrain as any).chunks?.forEach((chunk: any) => {
-        this.scene.remove(chunk.mesh);
-        chunk.mesh.geometry.dispose();
-      });
+      this.terrain.dispose();
       this.terrain = null;
     }
 
     this.renderer.dispose();
     this.container.remove();
+    // this.buildings?.dispose();
+    // this.vegetation?.dispose();
+    // this.settlements?.dispose();
 
     // console.log('Engine destroyed safely.');
   }
