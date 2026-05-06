@@ -134,6 +134,19 @@ export class EnemyManager {
     if (idx !== -1) {
       enemy.userData.isDead = true;
       this.scene.remove(enemy);
+      // Dispose of enemy model resources
+      enemy.traverse((object) => {
+        if (object instanceof THREE.Mesh) {
+          if (object.geometry) object.geometry.dispose();
+          if (object.material) {
+            if (Array.isArray(object.material)) {
+              for (const material of object.material) material.dispose();
+            } else {
+              object.material.dispose();
+            }
+          }
+        }
+      });
       this.enemies.splice(idx, 1);
     }
   }
@@ -142,6 +155,19 @@ export class EnemyManager {
   public clearAll(): void {
     for (const e of this.enemies) {
       this.scene.remove(e);
+      // Dispose of enemy model resources
+      e.traverse((object) => {
+        if (object instanceof THREE.Mesh) {
+          if (object.geometry) object.geometry.dispose();
+          if (object.material) {
+            if (Array.isArray(object.material)) {
+              for (const material of object.material) material.dispose();
+            } else {
+              object.material.dispose();
+            }
+          }
+        }
+      });
     }
     this.enemies      = [];
     this.spawnIndex   = 0;

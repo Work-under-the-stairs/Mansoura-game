@@ -218,4 +218,12 @@ export class Cockpit {
             }
         }
     }
+
+    public dispose(): void {
+        if (this.weaponSystem) {
+            this.weaponSystem.dispose();
+        }
+        // No need to dispose model/camera here as they are part of the scene
+        // and will be disposed by Engine.ts traverse method.
+    }
 }

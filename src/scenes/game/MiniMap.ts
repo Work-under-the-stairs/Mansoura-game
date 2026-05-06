@@ -53,10 +53,10 @@ export class MiniMap {
     // ── Hidden mini-map canvas (used for modal rendering) ──────────────────
     this.container = document.createElement('div');
     this.container.id = 'game-minimap-container';
-    this.setupContainer(options.width || 200, options.height || 200);
+    this.setupContainer(options.width || 300, options.height || 200);
 
     this.canvas = document.createElement('canvas');
-    this.canvas.width  = options.width  || 200;
+    this.canvas.width = options.width || 500;
     this.canvas.height = options.height || 200;
     this.canvas.style.display = 'block';
     this.container.appendChild(this.canvas);
@@ -90,13 +90,13 @@ export class MiniMap {
 
     // ── Arrow HUD ──────────────────────────────────────────────────────────
     this.arrowContainer = document.createElement('div');
-    this.arrowCanvas    = document.createElement('canvas');
-    const initialArrowSize      = this.getArrowSizePx();
-    this.arrowCanvas.width      = initialArrowSize;
-    this.arrowCanvas.height     = initialArrowSize;
+    this.arrowCanvas = document.createElement('canvas');
+    const initialArrowSize = this.getArrowSizePx();
+    this.arrowCanvas.width = initialArrowSize;
+    this.arrowCanvas.height = initialArrowSize;
     // CRITICAL: Ensure the canvas itself has the transition for smooth rotation
     this.arrowCanvas.style.transition = 'transform 0.05s linear';
-    
+
     const aCtx = this.arrowCanvas.getContext('2d');
     if (!aCtx) throw new Error('Could not get arrow 2D context');
     this.arrowCtx = aCtx;
@@ -112,7 +112,7 @@ export class MiniMap {
     // Click on arrow → open fullscreen modal
     this.arrowContainer.addEventListener('click', () => this.openModal());
     this.arrowContainer.style.pointerEvents = 'auto';
-    this.arrowContainer.style.cursor        = 'pointer';
+    this.arrowContainer.style.cursor = 'pointer';
 
     // ── Responsive resize listener ─────────────────────────────────────────
     this.onResizeBound = () => {
@@ -126,7 +126,7 @@ export class MiniMap {
 
     // ── Fullscreen Modal ───────────────────────────────────────────────────
     this.modalOverlay = document.createElement('div');
-    this.modalCanvas  = document.createElement('canvas');
+    this.modalCanvas = document.createElement('canvas');
     const mCtx = this.modalCanvas.getContext('2d');
     if (!mCtx) throw new Error('Could not get modal 2D context');
     this.modalCtx = mCtx;
@@ -143,43 +143,43 @@ export class MiniMap {
   /** Returns arrow container size in px: 11vmin, clamped 52px–110px */
   private getArrowSizePx(): number {
     const vmin = Math.min(window.innerWidth, window.innerHeight);
-    return Math.max(52, Math.min(110, Math.round(vmin * 0.11)));
+    return Math.max(52, Math.min(150, Math.round(vmin * 0.15)));
   }
 
   // ── Container & Style Setup ──────────────────────────────────────────────
 
   private setupContainer(w: number, h: number) {
-    this.container.style.position     = 'fixed';
-    this.container.style.top          = '-9999px';
-    this.container.style.left         = '-9999px';
-    this.container.style.width        = `${w}px`;
-    this.container.style.height       = `${h}px`;
-    this.container.style.overflow     = 'hidden';
-    this.container.style.zIndex       = '-1';
+    this.container.style.position = 'fixed';
+    this.container.style.top = '-999px';
+    this.container.style.left = '-999px';
+    this.container.style.width = `${w}px`;
+    this.container.style.height = `${h}px`;
+    this.container.style.overflow = 'hidden';
+    this.container.style.zIndex = '-1';
     this.container.style.pointerEvents = 'none';
   }
 
   private setupArrowContainer() {
-    const c    = this.arrowContainer;
+    const c = this.arrowContainer;
     const size = this.getArrowSizePx();
     // Offset from screen edge: 2.5vmin, min 12px
     const offset = Math.max(12, Math.round(Math.min(window.innerWidth, window.innerHeight) * 0.025));
 
     c.id = 'game-arrow-hud';
-    c.style.position        = 'fixed';
-    c.style.top             = `${offset}px`;
-    c.style.left            = `${offset}px`;
-    c.style.width           = `${size}px`;
-    c.style.height          = `${size}px`;
-    c.style.zIndex          = '99999';
-    c.style.borderRadius    = '50%';
-    c.style.background      = 'radial-gradient(circle at 35% 35%, rgba(60,20,20,0.95), rgba(25,5,5,0.98))';
-    c.style.border          = '2px solid rgba(255,80,80,0.5)';
-    c.style.boxShadow       = '0 0 18px rgba(220,30,30,0.4), inset 0 0 8px rgba(0,0,0,0.6)';
-    c.style.display         = 'flex';
-    c.style.alignItems      = 'center';
-    c.style.justifyContent  = 'center';
-    c.style.transition      = 'box-shadow 0.2s ease';
+    c.style.position = 'fixed';
+    c.style.top = `${offset}px`;
+    c.style.left = `${offset}px`;
+    c.style.width = `${size}px`;
+    c.style.height = `${size}px`;
+    c.style.zIndex = '99999';
+    c.style.borderRadius = '50%';
+    c.style.background = 'radial-gradient(circle at 35% 35%, rgba(60,20,20,0.95), rgba(25,5,5,0.98))';
+    c.style.border = '2px solid rgba(255,80,80,0.5)';
+    c.style.boxShadow = '0 0 18px rgba(220,30,30,0.4), inset 0 0 8px rgba(0,0,0,0.6)';
+    c.style.display = 'flex';
+    c.style.alignItems = 'center';
+    c.style.justifyContent = 'center';
+    c.style.transition = 'box-shadow 0.2s ease';
 
     // Hover glow
     c.addEventListener('mouseenter', () => {
@@ -192,33 +192,33 @@ export class MiniMap {
 
   /** Reapplies responsive size to the arrow container + canvas after a resize */
   private resizeArrow(): void {
-    const size   = this.getArrowSizePx();
+    const size = this.getArrowSizePx();
     const offset = Math.max(12, Math.round(Math.min(window.innerWidth, window.innerHeight) * 0.025));
-    const c      = this.arrowContainer;
-    c.style.width  = `${size}px`;
+    const c = this.arrowContainer;
+    c.style.width = `${size}px`;
     c.style.height = `${size}px`;
-    c.style.top    = `${offset}px`;
-    c.style.left   = `${offset}px`;
+    c.style.top = `${offset}px`;
+    c.style.left = `${offset}px`;
 
     // Resize the backing canvas and redraw arrow
-    this.arrowCanvas.width  = size;
+    this.arrowCanvas.width = size;
     this.arrowCanvas.height = size;
     this.drawArrow(this.currentDeviation);
   }
 
   private setupModal() {
     const o = this.modalOverlay;
-    o.id                    = 'game-minimap-modal';
-    o.style.position        = 'fixed';
-    o.style.inset           = '0';
-    o.style.background      = 'rgba(0,0,0,0.85)';
-    o.style.zIndex          = '999999';
-    o.style.display         = 'none';
-    o.style.alignItems      = 'center';
-    o.style.justifyContent  = 'center';
-    o.style.flexDirection   = 'column';
-    o.style.backdropFilter  = 'blur(6px)';
-    o.style.cursor          = 'pointer';
+    o.id = 'game-minimap-modal';
+    o.style.position = 'fixed';
+    o.style.inset = '0';
+    o.style.background = 'rgba(0,0,0,0.85)';
+    o.style.zIndex = '999999';
+    o.style.display = 'none';
+    o.style.alignItems = 'center';
+    o.style.justifyContent = 'center';
+    o.style.flexDirection = 'column';
+    o.style.backdropFilter = 'blur(6px)';
+    o.style.cursor = 'pointer';
 
     const title = document.createElement('div');
     title.id = 'game-minimap-modal-title';
@@ -263,10 +263,10 @@ export class MiniMap {
   // ── Arrow Drawing ────────────────────────────────────────────────────────
 
   private drawArrow(deviationRad: number) {
-    const c   = this.arrowCanvas;
+    const c = this.arrowCanvas;
     const ctx = this.arrowCtx;
-    const cx  = c.width  / 2;
-    const cy  = c.height / 2;
+    const cx = c.width / 2;
+    const cy = c.height / 2;
     // Arrow size = 32% of canvas width so it scales with any canvas size
     const size = c.width * 0.32;
 
@@ -274,27 +274,27 @@ export class MiniMap {
 
     ctx.save();
     ctx.translate(cx, cy);
-    
-    ctx.shadowBlur  = 14;
+
+    ctx.shadowBlur = 14;
     ctx.shadowColor = 'rgba(255,80,80,0.9)';
 
     ctx.beginPath();
-    ctx.moveTo(0,             -size);           // tip
-    ctx.lineTo( size * 0.45,  size * 0.35);    // bottom-right
-    ctx.lineTo(0,             size * 0.1);      // inner bottom
-    ctx.lineTo(-size * 0.45,  size * 0.35);    // bottom-left
+    ctx.moveTo(0, -size);           // tip
+    ctx.lineTo(size * 0.45, size * 0.35);    // bottom-right
+    ctx.lineTo(0, size * 0.1);      // inner bottom
+    ctx.lineTo(-size * 0.45, size * 0.35);    // bottom-left
     ctx.closePath();
 
     const grad = ctx.createLinearGradient(0, -size, 0, size * 0.35);
-    grad.addColorStop(0,   'rgba(255,120,120,1)');
+    grad.addColorStop(0, 'rgba(255,120,120,1)');
     grad.addColorStop(0.5, 'rgba(220,30,30,1)');
-    grad.addColorStop(1,   'rgba(120,10,10,0.7)');
+    grad.addColorStop(1, 'rgba(120,10,10,0.7)');
     ctx.fillStyle = grad;
     ctx.fill();
 
-    ctx.shadowBlur    = 0;
-    ctx.strokeStyle   = 'rgba(255,180,180,0.8)';
-    ctx.lineWidth     = 1.5;
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(255,180,180,0.8)';
+    ctx.lineWidth = 1.5;
     ctx.stroke();
 
     ctx.restore();
@@ -307,11 +307,16 @@ export class MiniMap {
   // ── Modal Open / Close ───────────────────────────────────────────────────
 
   private openModal() {
-    const vmin    = Math.min(window.innerWidth, window.innerHeight);
-    const ratio   = vmin < 500 ? 0.90 : 0.80;   // 90% on small/mobile, 80% on desktop
-    const size    = Math.floor(vmin * ratio);
-    this.modalCanvas.width  = size;
+    const vmin = Math.min(window.innerWidth, window.innerHeight);
+    console.log("vmin: " + vmin);
+    const ratio = vmin < 500 ? 0.95 : 0.85;   // 90% on small/mobile, 80% on desktop
+    const size = Math.floor(vmin * ratio);
+    this.modalCanvas.width = size;
     this.modalCanvas.height = size;
+    if (vmin < 500) {
+      this.modalCanvas.width = 600;
+      this.modalCanvas.height = 350;
+    }
     this.isModalOpen = true;
     this.drawModal();
     this.modalOverlay.style.display = 'flex';
@@ -324,16 +329,16 @@ export class MiniMap {
   }
 
   private drawModal() {
-    const w   = this.modalCanvas.width;
-    const h   = this.modalCanvas.height;
+    const w = this.modalCanvas.width;
+    const h = this.modalCanvas.height;
     const ctx = this.modalCtx;
     ctx.clearRect(0, 0, w, h);
     if (this.isImageLoaded) ctx.drawImage(this.mapImage, 0, 0, w, h);
     const px = this.playerPos.x * w;
     const py = this.playerPos.y * h;
-    
+
     // Player position indicator removed per user request
-    
+
     // Arrow on big map removed per user request
   }
 
@@ -367,9 +372,9 @@ export class MiniMap {
     // CSS rotate is CW positive.
     // So to make CCW rotation in Three.js result in CCW rotation in CSS, we negate.
     let deviation = -(headingRad - this.referenceHeading);
-    
+
     // Normalize to [-PI, PI]
-    while (deviation >  Math.PI) deviation -= 2 * Math.PI;
+    while (deviation > Math.PI) deviation -= 2 * Math.PI;
     while (deviation < -Math.PI) deviation += 2 * Math.PI;
 
     if (Math.abs(deviation - this.currentDeviation) < 0.001) return;
@@ -395,8 +400,8 @@ export class MiniMap {
 
   public dispose() {
     window.removeEventListener('resize', this.onResizeBound);
-    if (this.container?.parentNode)      this.container.parentNode.removeChild(this.container);
+    if (this.container?.parentNode) this.container.parentNode.removeChild(this.container);
     if (this.arrowContainer?.parentNode) this.arrowContainer.parentNode.removeChild(this.arrowContainer);
-    if (this.modalOverlay?.parentNode)   this.modalOverlay.parentNode.removeChild(this.modalOverlay);
+    if (this.modalOverlay?.parentNode) this.modalOverlay.parentNode.removeChild(this.modalOverlay);
   }
 }

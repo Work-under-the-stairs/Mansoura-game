@@ -105,6 +105,8 @@ class HealthSystem {
 
   private cameraBasePos = new THREE.Vector3();
   private cameraBasePosSet = false;
+  // FIX: Cache camera reference — don't search children every frame
+  private cachedCam: THREE.PerspectiveCamera | undefined;
 
   private hudFill: HTMLElement;
   private hudLabel: HTMLElement;
@@ -146,7 +148,14 @@ class HealthSystem {
     const model = this.cockpit.model;
     if (!model) return;
 
-    const cam = model.children.find(c => c instanceof THREE.PerspectiveCamera) as THREE.PerspectiveCamera | undefined;
+    // FIX: Cache the camera — only search children once, not every frame
+    if (!this.cachedCam) {
+      this.cachedCam = model.children.find(
+        c => c instanceof THREE.PerspectiveCamera
+      ) as THREE.PerspectiveCamera | undefined;
+    }
+    const cam = this.cachedCam;
+
     if (cam && !this.cameraBasePosSet) {
       this.cameraBasePos.copy(cam.position);
       this.cameraBasePosSet = true;
@@ -177,6 +186,8 @@ class HealthSystem {
     this.shakeTimer = 0;
     this.shakeIntensity = 0;
     this.cameraBasePosSet = false;
+    // FIX: Clear cached cam on reset so it re-resolves after restart
+    this.cachedCam = undefined;
     this.refreshBar();
     this.deathEl.classList.remove('cs-visible');
     this.deathEl.style.visibility = 'hidden';
@@ -447,18 +458,29 @@ export class CombatSystem {
   private readonly ENEMY_HIT_R_BULLET = 4000;
   private readonly ENEMY_HIT_R_MISSILE = 4000;
 
+  // ── Shared geometry + materials (created once, reused for every projectile) ──
   private readonly bulletGeo: THREE.CylinderGeometry;
   private readonly bulletMat: THREE.MeshBasicMaterial;
   private readonly missileBody: THREE.CylinderGeometry;
   private readonly missileMat: THREE.MeshBasicMaterial;
-  private readonly missileGlow: THREE.SpriteMaterial;
+
+  // FIX: Shared materials for bullet/missile VFX — no new allocation per shot
+  private readonly _bulletGlowMat: THREE.SpriteMaterial;
+  private readonly _bulletTailMat: THREE.LineBasicMaterial;
+  private readonly _bulletTailGeo: THREE.BufferGeometry;
+  private readonly _missileGlowMat: THREE.SpriteMaterial;
+  private readonly _missileExhaustMat: THREE.SpriteMaterial;
 
   private shots: EnemyShot[] = [];
   private cooldowns = new Map<string, number>();
   private shootIntervals = new Map<string, number>();
 
-  // Cache for explosion textures
+  // FIX: Textures pre-created in constructor — never on first explosion
   private cachedTextures: Map<string, THREE.CanvasTexture> = new Map();
+
+  // FIX: Single reusable white-flash overlay DOM element (pooled, not created per explosion)
+  private readonly _flashOverlay: HTMLDivElement;
+  private _flashOverlayTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private scene: THREE.Scene,
@@ -485,6 +507,7 @@ export class CombatSystem {
       onExitCallback,
     );
 
+    // ── Geometry ──────────────────────────────────────────────
     this.bulletGeo = new THREE.CylinderGeometry(2.5, 2.5, 28, 6);
     this.bulletGeo.rotateX(Math.PI / 2);
     this.bulletMat = new THREE.MeshBasicMaterial({ color: 0xff5500 });
@@ -492,13 +515,45 @@ export class CombatSystem {
     this.missileBody = new THREE.CylinderGeometry(5, 5, 70, 8);
     this.missileBody.rotateX(Math.PI / 2);
     this.missileMat = new THREE.MeshBasicMaterial({ color: 0xff2200 });
-    this.missileGlow = new THREE.SpriteMaterial({
-      color: 0xff4400,
-      transparent: true,
-      opacity: 0.55,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
+
+    // FIX: Shared VFX materials — allocated once here, reused for all bullets/missiles
+    this._bulletGlowMat = new THREE.SpriteMaterial({
+      color: 0xff7722, transparent: true, opacity: 0.70,
+      blending: THREE.AdditiveBlending, depthWrite: false,
     });
+    this._bulletTailGeo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 0, 14), new THREE.Vector3(0, 0, 55),
+    ]);
+    this._bulletTailMat = new THREE.LineBasicMaterial({
+      color: 0xff8844, transparent: true, opacity: 0.65,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    this._missileGlowMat = new THREE.SpriteMaterial({
+      color: 0xff4400, transparent: true, opacity: 0.55,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    this._missileExhaustMat = new THREE.SpriteMaterial({
+      color: 0xffaa00, transparent: true, opacity: 0.40,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+
+    // FIX: Pre-create all explosion textures at startup — zero cost at explosion time
+    this.cachedTextures.set('flash', this.createFlashTexture());
+    this.cachedTextures.set('smoke', this.createSmokeTexture());
+    this.cachedTextures.set('debris', this.createDebrisTexture());
+
+    // FIX: Pre-create the pooled flash overlay so it's never allocated mid-game
+    this._flashOverlay = document.createElement('div');
+    Object.assign(this._flashOverlay.style, {
+      position: 'fixed',
+      inset: '0',
+      backgroundColor: 'white',
+      pointerEvents: 'none',
+      zIndex: '99999',
+      opacity: '0',
+      transition: 'opacity 0.15s ease-out',
+    });
+    document.body.appendChild(this._flashOverlay);
   }
 
   // ── Public API ────────────────────────────────────────────────
@@ -514,6 +569,7 @@ export class CombatSystem {
   }
 
   public reset(): void {
+    // FIX: Proper cleanup — remove shot meshes before clearing array
     for (const s of this.shots) this.scene.remove(s.mesh);
     this.shots = [];
     this.cooldowns.clear();
@@ -543,18 +599,31 @@ export class CombatSystem {
   public dispose(): void {
     for (const s of this.shots) this.scene.remove(s.mesh);
     this.shots = [];
+
+    // Geometry
     this.bulletGeo.dispose();
     this.bulletMat.dispose();
     this.missileBody.dispose();
     this.missileMat.dispose();
-    this.missileGlow.dispose();
+
+    // FIX: Dispose all shared VFX materials and geometry
+    this._bulletGlowMat.dispose();
+    this._bulletTailMat.dispose();
+    this._bulletTailGeo.dispose();
+    this._missileGlowMat.dispose();
+    this._missileExhaustMat.dispose();
+
     this.health.dispose();
-    
+
     // Dispose cached textures
     for (const texture of this.cachedTextures.values()) {
       texture.dispose();
     }
     this.cachedTextures.clear();
+
+    // FIX: Remove the pooled flash overlay from DOM
+    this._flashOverlay.remove();
+    if (this._flashOverlayTimer) clearTimeout(this._flashOverlayTimer);
   }
 
   // ── Enemy shooting AI ─────────────────────────────────────────
@@ -621,43 +690,30 @@ export class CombatSystem {
   // ── Enemy shot visuals ────────────────────────────────────────
 
   private buildBulletMesh(dir: THREE.Vector3): THREE.Object3D {
+    // FIX: Reuse shared materials — no new SpriteMaterial/LineBasicMaterial per bullet
     const group = new THREE.Group();
     group.add(new THREE.Mesh(this.bulletGeo, this.bulletMat));
 
-    const glow = new THREE.Sprite(new THREE.SpriteMaterial({
-      color: 0xff7722, transparent: true, opacity: 0.70,
-      blending: THREE.AdditiveBlending, depthWrite: false,
-    }));
+    const glow = new THREE.Sprite(this._bulletGlowMat);
     glow.scale.set(18, 18, 1);
     group.add(glow);
 
-    const tailGeo = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(0, 0, 14), new THREE.Vector3(0, 0, 55),
-    ]);
-    group.add(new THREE.Line(tailGeo, new THREE.LineBasicMaterial({
-      color: 0xff8844, transparent: true, opacity: 0.65,
-      blending: THREE.AdditiveBlending, depthWrite: false,
-    })));
+    group.add(new THREE.Line(this._bulletTailGeo, this._bulletTailMat));
 
     group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, -1), dir);
     return group;
   }
 
   private buildMissileMesh(dir: THREE.Vector3): THREE.Object3D {
+    // FIX: Reuse shared materials — no new SpriteMaterial per missile
     const group = new THREE.Group();
     group.add(new THREE.Mesh(this.missileBody, this.missileMat));
 
-    const glow = new THREE.Sprite(new THREE.SpriteMaterial({
-      color: 0xff4400, transparent: true, opacity: 0.55,
-      blending: THREE.AdditiveBlending, depthWrite: false,
-    }));
+    const glow = new THREE.Sprite(this._missileGlowMat);
     glow.scale.set(50, 50, 1);
     group.add(glow);
 
-    const exhaust = new THREE.Sprite(new THREE.SpriteMaterial({
-      color: 0xffaa00, transparent: true, opacity: 0.40,
-      blending: THREE.AdditiveBlending, depthWrite: false,
-    }));
+    const exhaust = new THREE.Sprite(this._missileExhaustMat);
     exhaust.scale.set(22, 80, 1);
     exhaust.position.set(0, 0, 45);
     group.add(exhaust);
@@ -669,12 +725,18 @@ export class CombatSystem {
   // ── Update flying shots + hit player ─────────────────────────
 
   private updateEnemyShots(delta: number, cockpitPos: THREE.Vector3): void {
-    const dead: EnemyShot[] = [];
+    // FIX: Single-pass reverse splice — O(n) instead of O(n²) filter-per-dead-shot
     const t = Date.now() * 0.001;
 
-    for (const s of this.shots) {
+    for (let i = this.shots.length - 1; i >= 0; i--) {
+      const s = this.shots[i];
       s.life -= delta;
-      if (s.life <= 0) { dead.push(s); continue; }
+
+      if (s.life <= 0) {
+        this.scene.remove(s.mesh);
+        this.shots.splice(i, 1);
+        continue;
+      }
 
       s.mesh.position.addScaledVector(s.velocity, delta);
       s.mesh.quaternion.setFromUnitVectors(
@@ -697,7 +759,6 @@ export class CombatSystem {
       if (dist < hitR) {
         const dmg = s.isMissile ? this.MISSILE_DAMAGE : this.BULLET_DAMAGE;
         this.health.takeDamage(dmg);
-        dead.push(s);
 
         if (s.isMissile) {
           this.sound.play('missile_hit', 0.9, 0.05);
@@ -705,20 +766,9 @@ export class CombatSystem {
           this.sound.play('bullet_hit', 0.7, 0.12);
         }
 
-        // this.notifications.show({
-        //   type: 'warn',
-        //   title: s.isMissile ? 'إصابة بصاروخ' : 'إصابة برصاص',
-        //   msg: s.isMissile
-        //     ? 'صاروخ معادٍ أصاب الطائرة. تم رصد أضرار هيكلية.'
-        //     : `إصابة مباشرة — سلامة الهيكل ${Math.round(this.health.hp)}%`,
-        //   duration: 3000,
-        // });
+        this.scene.remove(s.mesh);
+        this.shots.splice(i, 1);
       }
-    }
-
-    for (const s of dead) {
-      this.scene.remove(s.mesh);
-      this.shots = this.shots.filter(x => x !== s);
     }
   }
 
@@ -744,9 +794,13 @@ export class CombatSystem {
     this.spawnExplosion(enemy.position.clone());
     this.sound.play('explosion', 0.85, 0.08);
 
-    const toRemove = this.shots.filter(s => s.owner === enemy);
-    for (const s of toRemove) this.scene.remove(s.mesh);
-    this.shots = this.shots.filter(s => s.owner !== enemy);
+    // FIX: Reverse iterate to remove shots from dead enemy — avoids extra filter pass
+    for (let i = this.shots.length - 1; i >= 0; i--) {
+      if (this.shots[i].owner === enemy) {
+        this.scene.remove(this.shots[i].mesh);
+        this.shots.splice(i, 1);
+      }
+    }
     this.cooldowns.delete(enemy.uuid);
     this.shootIntervals.delete(enemy.uuid);
 
@@ -770,7 +824,7 @@ export class CombatSystem {
   private startDeathFall(enemy: THREE.Object3D): void {
     enemy.userData.isDead = true;
 
-    // On mobile: skip the rAF death fall animation — just remove after a short delay
+    // On mobile: skip the rAF death-fall animation — just remove after short delay
     if (this.isMobile) {
       setTimeout(() => this.enemyManager.removeEnemy(enemy), 500);
       return;
@@ -798,12 +852,11 @@ export class CombatSystem {
 
   private spawnExplosion(pos: THREE.Vector3): void {
     // ══════════════════════════════════════════════════════════════
-    // MOBILE: Ultra-simple explosion — NO requestAnimationFrame loops
-    // Just 3 sprites + setTimeout removal. Zero rAF = zero crash risk.
+    // MOBILE: Ultra-light explosion — zero rAF loops, pooled overlay,
+    // strictly 3 sprites removed via setTimeout. Zero crash risk.
     // ══════════════════════════════════════════════════════════════
     if (this.isMobile) {
-      // return;
-      const flashTexture = this.getOrCreateTexture('flash', () => this.createFlashTexture());
+      const flashTexture = this.cachedTextures.get('flash')!;
 
       const layers = [
         { color: 0xffffff, size: 2000, opacity: 0.9, life: 300 },
@@ -825,410 +878,313 @@ export class CombatSystem {
         sprite.scale.setScalar(layer.size);
         this.scene.add(sprite);
 
-        // Simple fade: reduce opacity once, then remove
-        setTimeout(() => {
-          mat.opacity = layer.opacity * 0.3;
-        }, layer.life * 0.5);
+        setTimeout(() => { mat.opacity = layer.opacity * 0.3; }, layer.life * 0.5);
         setTimeout(() => {
           this.scene.remove(sprite);
           mat.dispose();
         }, layer.life);
       }
 
-      // Simple white flash overlay
-      const whiteOverlay = document.createElement('div');
-      Object.assign(whiteOverlay.style, {
-        position: 'fixed', inset: '0', backgroundColor: 'white',
-        pointerEvents: 'none', zIndex: '99999', opacity: '0.6',
-        transition: 'opacity 0.15s ease',
-      });
-      document.body.appendChild(whiteOverlay);
-      setTimeout(() => { whiteOverlay.style.opacity = '0'; }, 50);
-      setTimeout(() => { whiteOverlay.remove(); }, 250);
-
+      // FIX: Reuse the pooled overlay — no DOM allocation per explosion
+      this._triggerFlashOverlay(0.6);
       return;
     }
 
     // ══════════════════════════════════════════════════════════════
-    // DESKTOP: Full cinematic explosion (unchanged — rAF loops OK on desktop)
+    // DESKTOP: Full cinematic explosion (rAF loops acceptable on desktop)
     // ══════════════════════════════════════════════════════════════
-  const flashTexture = this.getOrCreateTexture('flash', () => this.createFlashTexture());
-  const smokeTexture = this.getOrCreateTexture('smoke', () => this.createSmokeTexture());
-  const debrisTexture = this.getOrCreateTexture('debris', () => this.createDebrisTexture());
+    const flashTexture = this.cachedTextures.get('flash')!;
+    const smokeTexture = this.cachedTextures.get('smoke')!;
+    const debrisTexture = this.cachedTextures.get('debris')!;
 
-  // 🔥 MAIN FLASH
-  const flashLayers = [
-    { color: 0xffffff, size: 2500, opacity: 1.0, life: 0.18, scaleMulti: 8.0 },
-    { color: 0xffcc88, size: 3800, opacity: 0.95, life: 0.25, scaleMulti: 9.0 },
-    { color: 0xff8800, size: 5200, opacity: 0.85, life: 0.35, scaleMulti: 10.0 },
-    { color: 0xff4400, size: 7000, opacity: 0.7, life: 0.48, scaleMulti: 11.0 },
-    { color: 0xcc2200, size: 9000, opacity: 0.5, life: 0.65, scaleMulti: 12.0 },
-    { color: 0xaa1100, size: 12000, opacity: 0.3, life: 0.85, scaleMulti: 13.0 },
-  ];
+    // 🔥 MAIN FLASH
+    const flashLayers = [
+      { color: 0xffffff,  size: 2500,  opacity: 1.0,  life: 0.18, scaleMulti: 8.0  },
+      { color: 0xffcc88,  size: 3800,  opacity: 0.95, life: 0.25, scaleMulti: 9.0  },
+      { color: 0xff8800,  size: 5200,  opacity: 0.85, life: 0.35, scaleMulti: 10.0 },
+      { color: 0xff4400,  size: 7000,  opacity: 0.7,  life: 0.48, scaleMulti: 11.0 },
+      { color: 0xcc2200,  size: 9000,  opacity: 0.5,  life: 0.65, scaleMulti: 12.0 },
+      { color: 0xaa1100,  size: 12000, opacity: 0.3,  life: 0.85, scaleMulti: 13.0 },
+    ];
 
-  for (const layer of flashLayers) {
-    const mat = new THREE.SpriteMaterial({
-      map: flashTexture,
-      color: layer.color,
-      transparent: true,
-      opacity: layer.opacity,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    });
-
-    const sprite = new THREE.Sprite(mat);
-    sprite.position.copy(pos);
-    const startScale = layer.size * 0.35;
-    sprite.scale.setScalar(startScale);
-    this.scene.add(sprite);
-
-    let elapsed = 0;
-
-    const tick = () => {
-      elapsed += 0.016;
-      const t = Math.min(elapsed / layer.life, 1);
-
-      if (t >= 1) {
-        this.scene.remove(sprite);
-        mat.dispose();
-        return;
-      }
-
-      const scaleMulti = 1 + t * (layer.scaleMulti - 1);
-      sprite.scale.setScalar(startScale * scaleMulti);
-      mat.opacity = layer.opacity * (1 - Math.pow(t, 1.5));
-      sprite.position.y += 45 * (1 - t);
-
-      requestAnimationFrame(tick);
-    };
-
-    requestAnimationFrame(tick);
-  }
-
-  // 💨 SMOKE
-  const smokeLayers = [
-    { color: 0x2a1a0a, size: 4000, opacity: 0.65, life: 1.5, riseSpeed: 6.0, drift: 2.5, count: 5 },
-    { color: 0x4a3a2a, size: 6000, opacity: 0.55, life: 2.0, riseSpeed: 5.0, drift: 2.0, count: 5 },
-    { color: 0x6a5a4a, size: 8500, opacity: 0.45, life: 2.6, riseSpeed: 4.0, drift: 1.5, count: 5 },
-    { color: 0x8a7a6a, size: 11000, opacity: 0.35, life: 3.2, riseSpeed: 3.0, drift: 1.2, count: 5 },
-    { color: 0xaa9a8a, size: 14000, opacity: 0.25, life: 4.0, riseSpeed: 2.0, drift: 0.8, count: 4 },
-  ];
-
-  for (const layer of smokeLayers) {
-    for (let s = 0; s < layer.count; s++) {
+    for (const layer of flashLayers) {
       const mat = new THREE.SpriteMaterial({
-        map: smokeTexture,
+        map: flashTexture,
         color: layer.color,
         transparent: true,
         opacity: layer.opacity,
-        blending: THREE.NormalBlending,
+        blending: THREE.AdditiveBlending,
         depthWrite: false,
       });
 
-      const angle = Math.random() * Math.PI * 2;
-      const radius = (Math.random() - 0.5) * 1200;
-      const offsetX = Math.cos(angle) * radius;
-      const offsetZ = Math.sin(angle) * radius;
-      
       const sprite = new THREE.Sprite(mat);
-      sprite.position.copy(pos.clone().add(new THREE.Vector3(offsetX, Math.random() * 300, offsetZ)));
-      sprite.scale.setScalar(layer.size * 0.15 * (0.5 + Math.random() * 1.0));
+      sprite.position.copy(pos);
+      const startScale = layer.size * 0.35;
+      sprite.scale.setScalar(startScale);
       this.scene.add(sprite);
 
       let elapsed = 0;
-      const driftX = (Math.random() - 0.5) * layer.drift * 2.0;
-      const driftZ = (Math.random() - 0.5) * layer.drift * 2.0;
-      const rotationSpeed = (Math.random() - 0.5) * 0.12;
-
       const tick = () => {
         elapsed += 0.016;
         const t = Math.min(elapsed / layer.life, 1);
-
-        if (t >= 1) {
-          this.scene.remove(sprite);
-          mat.dispose();
-          return;
-        }
-
-        const scaleFactor = 0.2 + t * 3.5;
-        sprite.scale.setScalar(layer.size * 0.15 * scaleFactor);
-        sprite.position.y += layer.riseSpeed * (1 - t * 0.4);
-        sprite.position.x += driftX * (0.2 + t);
-        sprite.position.z += driftZ * (0.2 + t);
-        sprite.position.x += Math.sin(elapsed * 5) * 2.5;
-        sprite.position.z += Math.cos(elapsed * 4) * 2.5;
-        sprite.material.rotation += rotationSpeed;
-        mat.opacity = layer.opacity * (1 - Math.pow(t, 1.4));
-
+        if (t >= 1) { this.scene.remove(sprite); mat.dispose(); return; }
+        sprite.scale.setScalar(startScale * (1 + t * (layer.scaleMulti - 1)));
+        mat.opacity = layer.opacity * (1 - Math.pow(t, 1.5));
+        sprite.position.y += 45 * (1 - t);
         requestAnimationFrame(tick);
       };
+      requestAnimationFrame(tick);
+    }
 
+    // 💨 SMOKE
+    const smokeLayers = [
+      { color: 0x2a1a0a, size: 4000,  opacity: 0.65, life: 1.5, riseSpeed: 6.0, drift: 2.5, count: 5 },
+      { color: 0x4a3a2a, size: 6000,  opacity: 0.55, life: 2.0, riseSpeed: 5.0, drift: 2.0, count: 5 },
+      { color: 0x6a5a4a, size: 8500,  opacity: 0.45, life: 2.6, riseSpeed: 4.0, drift: 1.5, count: 5 },
+      { color: 0x8a7a6a, size: 11000, opacity: 0.35, life: 3.2, riseSpeed: 3.0, drift: 1.2, count: 5 },
+      { color: 0xaa9a8a, size: 14000, opacity: 0.25, life: 4.0, riseSpeed: 2.0, drift: 0.8, count: 4 },
+    ];
+
+    for (const layer of smokeLayers) {
+      for (let s = 0; s < layer.count; s++) {
+        const mat = new THREE.SpriteMaterial({
+          map: smokeTexture,
+          color: layer.color,
+          transparent: true,
+          opacity: layer.opacity,
+          blending: THREE.NormalBlending,
+          depthWrite: false,
+        });
+
+        const angle = Math.random() * Math.PI * 2;
+        const radius = (Math.random() - 0.5) * 1200;
+        const sprite = new THREE.Sprite(mat);
+        sprite.position.copy(pos.clone().add(new THREE.Vector3(
+          Math.cos(angle) * radius,
+          Math.random() * 300,
+          Math.sin(angle) * radius,
+        )));
+        sprite.scale.setScalar(layer.size * 0.15 * (0.5 + Math.random() * 1.0));
+        this.scene.add(sprite);
+
+        let elapsed = 0;
+        const driftX = (Math.random() - 0.5) * layer.drift * 2.0;
+        const driftZ = (Math.random() - 0.5) * layer.drift * 2.0;
+        const rotSpeed = (Math.random() - 0.5) * 0.12;
+
+        const tick = () => {
+          elapsed += 0.016;
+          const t = Math.min(elapsed / layer.life, 1);
+          if (t >= 1) { this.scene.remove(sprite); mat.dispose(); return; }
+          sprite.scale.setScalar(layer.size * 0.15 * (0.2 + t * 3.5));
+          sprite.position.y  += layer.riseSpeed * (1 - t * 0.4);
+          sprite.position.x  += driftX * (0.2 + t) + Math.sin(elapsed * 5) * 2.5;
+          sprite.position.z  += driftZ * (0.2 + t) + Math.cos(elapsed * 4) * 2.5;
+          sprite.material.rotation += rotSpeed;
+          mat.opacity = layer.opacity * (1 - Math.pow(t, 1.4));
+          requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }
+    }
+
+    // 🔥 FIREBALL PARTICLES
+    const fireParticleCount = 180;
+    for (let i = 0; i < fireParticleCount; i++) {
+      const mat = new THREE.SpriteMaterial({
+        map: flashTexture,
+        color: i < fireParticleCount * 0.5 ? 0xffaa44 : 0xff4422,
+        transparent: true,
+        opacity: 0.95,
+        blending: THREE.AdditiveBlending,
+      });
+
+      const sprite = new THREE.Sprite(mat);
+      sprite.position.copy(pos);
+
+      const angle     = Math.random() * Math.PI * 2;
+      const elevation = Math.random() * Math.PI - Math.PI / 2;
+      const speed     = 180 + Math.random() * 220;
+      const vel = new THREE.Vector3(
+        Math.cos(angle) * Math.cos(elevation) * speed,
+        Math.sin(elevation) * speed + 120,
+        Math.sin(angle) * Math.cos(elevation) * speed,
+      );
+
+      sprite.scale.setScalar(25 + Math.random() * 45);
+      this.scene.add(sprite);
+
+      let life = 0;
+      const maxLife = 0.6 + Math.random() * 0.4;
+
+      const tick = () => {
+        life += 0.016;
+        const t = life / maxLife;
+        if (t >= 1) { this.scene.remove(sprite); mat.dispose(); return; }
+        sprite.position.addScaledVector(vel, 0.016);
+        vel.y -= 25;
+        vel.multiplyScalar(0.96);
+        sprite.scale.setScalar((25 + Math.random() * 45) * (1 - t * 0.25));
+        mat.opacity = 0.95 * (1 - Math.pow(t, 1.6));
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }
+
+    // 💥 SHOCKWAVE RINGS
+    for (let r = 0; r < 3; r++) {
+      const ringGeo = new THREE.RingGeometry(30 + r * 20, 80 + r * 30, 64);
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: r === 0 ? 0xffaa66 : (r === 1 ? 0xff8844 : 0xff6622),
+        transparent: true,
+        opacity: 0.85 - r * 0.15,
+        side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending,
+      });
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.position.copy(pos);
+      ring.position.y += 40 + r * 15;
+      ring.lookAt(0, 1, 0);
+      this.scene.add(ring);
+
+      const baseOpacity = 0.85 - r * 0.15;
+      const delay = r * 0.05;
+      const duration = 0.4 + r * 0.1;
+      let ringLife = 0;
+      let started = false;
+
+      const ringTick = () => {
+        ringLife += 0.016;
+        if (!started) {
+          if (ringLife < delay) { requestAnimationFrame(ringTick); return; }
+          started = true; ringLife = 0;
+        }
+        const t = ringLife / duration;
+        if (t >= 1) { this.scene.remove(ring); ringGeo.dispose(); ringMat.dispose(); return; }
+        ring.scale.setScalar(1 + t * 20);
+        ringMat.opacity = baseOpacity * (1 - Math.pow(t, 1.4));
+        requestAnimationFrame(ringTick);
+      };
+      requestAnimationFrame(ringTick);
+    }
+
+    // 💨 DEBRIS PARTICLES
+    for (let i = 0; i < 120; i++) {
+      const mat = new THREE.SpriteMaterial({
+        map: debrisTexture,
+        color: 0xccaa88,
+        transparent: true,
+        opacity: 0.9,
+      });
+
+      const sprite = new THREE.Sprite(mat);
+      sprite.position.copy(pos);
+
+      const angle     = Math.random() * Math.PI * 2;
+      const elevation = Math.random() * Math.PI - Math.PI / 2;
+      const speed     = 100 + Math.random() * 180;
+      const vel = new THREE.Vector3(
+        Math.cos(angle) * Math.cos(elevation) * speed,
+        Math.sin(elevation) * speed + 80,
+        Math.sin(angle) * Math.cos(elevation) * speed,
+      );
+
+      sprite.scale.setScalar(12 + Math.random() * 28);
+      this.scene.add(sprite);
+
+      let life = 0;
+      const maxLife  = 1.2 + Math.random() * 1.0;
+      let rotation   = Math.random() * Math.PI * 2;
+      const rotSpeed = (Math.random() - 0.5) * 0.6;
+
+      const tick = () => {
+        life += 0.016;
+        const t = life / maxLife;
+        if (t >= 1) { this.scene.remove(sprite); mat.dispose(); return; }
+        sprite.position.addScaledVector(vel, 0.016);
+        vel.y -= 28;
+        vel.multiplyScalar(0.97);
+        rotation += rotSpeed;
+        sprite.material.rotation = rotation;
+        sprite.scale.setScalar((12 + Math.random() * 28) * (1 - t * 0.5));
+        mat.opacity = 0.9 * (1 - t);
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }
+
+    // 🌟 SCREEN SHAKE
+    if (this.camera) {
+      const originalPos = this.camera.position.clone();
+      let shakeTime = 0;
+      const shakeDuration = 0.6;
+      const shakeTick = () => {
+        shakeTime += 0.016;
+        const t = shakeTime / shakeDuration;
+        if (t >= 1) { this.camera.position.copy(originalPos); return; }
+        const intensity = (1 - t) * 35;
+        this.camera.position.x = originalPos.x + (Math.random() - 0.5) * intensity;
+        this.camera.position.y = originalPos.y + (Math.random() - 0.5) * intensity * 1.2;
+        this.camera.position.z = originalPos.z + (Math.random() - 0.5) * intensity * 0.7;
+        requestAnimationFrame(shakeTick);
+      };
+      requestAnimationFrame(shakeTick);
+    }
+
+    // 💥 WHITE FLASH OVERLAY — FIX: reuse pooled element
+    this._triggerFlashOverlay(0.85);
+
+    // 🌋 MUSHROOM CLOUD STEM
+    for (let i = 0; i < 30; i++) {
+      const mat = new THREE.SpriteMaterial({
+        map: flashTexture,
+        color: 0xff6644,
+        transparent: true,
+        opacity: 0.7,
+        blending: THREE.AdditiveBlending,
+      });
+
+      const sprite = new THREE.Sprite(mat);
+      const angle  = Math.random() * Math.PI * 2;
+      const radius = (Math.random() - 0.5) * 600;
+      sprite.position.copy(pos.clone().add(new THREE.Vector3(
+        Math.cos(angle) * radius,
+        Math.random() * 200,
+        Math.sin(angle) * radius,
+      )));
+      sprite.scale.setScalar(80 + Math.random() * 120);
+      this.scene.add(sprite);
+
+      let elapsed = 0;
+      const life      = 0.8;
+      const riseSpeed = 45 + Math.random() * 35;
+
+      const tick = () => {
+        elapsed += 0.016;
+        const t = elapsed / life;
+        if (t >= 1) { this.scene.remove(sprite); mat.dispose(); return; }
+        sprite.position.y += riseSpeed * (1 - t * 0.5);
+        sprite.scale.setScalar((80 + Math.random() * 120) * (1 + t * 0.8));
+        mat.opacity = 0.7 * (1 - Math.pow(t, 1.3));
+        requestAnimationFrame(tick);
+      };
       requestAnimationFrame(tick);
     }
   }
 
-  // 🔥 FIREBALL PARTICLES
-  const fireParticleCount = 180;
-  for (let i = 0; i < fireParticleCount; i++) {
-    const mat = new THREE.SpriteMaterial({
-      map: flashTexture,
-      color: i < fireParticleCount * 0.5 ? 0xffaa44 : 0xff4422,
-      transparent: true,
-      opacity: 0.95,
-      blending: THREE.AdditiveBlending,
-    });
-
-    const sprite = new THREE.Sprite(mat);
-    sprite.position.copy(pos);
-    
-    const angle = Math.random() * Math.PI * 2;
-    const elevation = Math.random() * Math.PI - Math.PI / 2;
-    const speed = 180 + Math.random() * 220;
-    const vel = new THREE.Vector3(
-      Math.cos(angle) * Math.cos(elevation) * speed,
-      Math.sin(elevation) * speed + 120,
-      Math.sin(angle) * Math.cos(elevation) * speed
-    );
-    
-    sprite.scale.setScalar(25 + Math.random() * 45);
-    this.scene.add(sprite);
-
-    let life = 0;
-    const maxLife = 0.6 + Math.random() * 0.4;
-
-    const tick = () => {
-      life += 0.016;
-      const t = life / maxLife;
-
-      if (t >= 1) {
-        this.scene.remove(sprite);
-        mat.dispose();
-        return;
-      }
-
-      sprite.position.addScaledVector(vel, 0.016);
-      vel.y -= 25;
-      vel.multiplyScalar(0.96);
-      
-      const scaleFactor = 1 - t * 0.25;
-      sprite.scale.setScalar((25 + Math.random() * 45) * scaleFactor);
-      mat.opacity = 0.95 * (1 - Math.pow(t, 1.6));
-
-      requestAnimationFrame(tick);
-    };
-
-    requestAnimationFrame(tick);
-  }
-
-  // 💥 SHOCKWAVE RINGS
-  const ringCount = 3;
-  for (let r = 0; r < ringCount; r++) {
-    const ringGeo = new THREE.RingGeometry(30 + r * 20, 80 + r * 30, 64);
-    const ringMat = new THREE.MeshBasicMaterial({
-      color: r === 0 ? 0xffaa66 : (r === 1 ? 0xff8844 : 0xff6622),
-      transparent: true,
-      opacity: 0.85 - r * 0.15,
-      side: THREE.DoubleSide,
-      blending: THREE.AdditiveBlending,
-    });
-    
-    const ring = new THREE.Mesh(ringGeo, ringMat);
-    ring.position.copy(pos);
-    ring.position.y += 40 + r * 15;
-    ring.lookAt(0, 1, 0);
-    this.scene.add(ring);
-    
-    let ringLife = 0;
-    const ringDelay = r * 0.05;
-    let started = false;
-    
-    const ringTick = () => {
-      if (!started) {
-        ringLife += 0.016;
-        if (ringLife >= ringDelay) {
-          started = true;
-          ringLife = 0;
-        } else {
-          requestAnimationFrame(ringTick);
-          return;
-        }
-      }
-      
-      ringLife += 0.016;
-      const t = ringLife / (0.4 + r * 0.1);
-      
-      if (t >= 1) {
-        this.scene.remove(ring);
-        ringGeo.dispose();
-        ringMat.dispose();
-        return;
-      }
-      
-      const scale = 1 + t * 20;
-      ring.scale.setScalar(scale);
-      ringMat.opacity = (0.85 - r * 0.15) * (1 - Math.pow(t, 1.4));
-      
-      requestAnimationFrame(ringTick);
-    };
-    requestAnimationFrame(ringTick);
-  }
-
-  // 💨 DEBRIS PARTICLES
-  const debrisCount = 120;
-  for (let i = 0; i < debrisCount; i++) {
-    const mat = new THREE.SpriteMaterial({
-      map: debrisTexture,
-      color: 0xccaa88,
-      transparent: true,
-      opacity: 0.9,
-    });
-
-    const sprite = new THREE.Sprite(mat);
-    sprite.position.copy(pos);
-    
-    const angle = Math.random() * Math.PI * 2;
-    const elevation = Math.random() * Math.PI - Math.PI / 2;
-    const speed = 100 + Math.random() * 180;
-    const vel = new THREE.Vector3(
-      Math.cos(angle) * Math.cos(elevation) * speed,
-      Math.sin(elevation) * speed + 80,
-      Math.sin(angle) * Math.cos(elevation) * speed
-    );
-    
-    sprite.scale.setScalar(12 + Math.random() * 28);
-    this.scene.add(sprite);
-
-    let life = 0;
-    const maxLife = 1.2 + Math.random() * 1.0;
-    let rotation = Math.random() * Math.PI * 2;
-    const rotSpeed = (Math.random() - 0.5) * 0.6;
-
-    const tick = () => {
-      life += 0.016;
-      const t = life / maxLife;
-
-      if (t >= 1) {
-        this.scene.remove(sprite);
-        mat.dispose();
-        return;
-      }
-
-      sprite.position.addScaledVector(vel, 0.016);
-      vel.y -= 28;
-      vel.multiplyScalar(0.97);
-      
-      rotation += rotSpeed;
-      sprite.material.rotation = rotation;
-      
-      const scaleFactor = 1 - t * 0.5;
-      sprite.scale.setScalar((12 + Math.random() * 28) * scaleFactor);
-      mat.opacity = 0.9 * (1 - t);
-
-      requestAnimationFrame(tick);
-    };
-
-    requestAnimationFrame(tick);
-  }
-
-  // 🌟 SCREEN SHAKE
-  if (this.camera) {
-    const originalPos = this.camera.position.clone();
-    let shakeTime = 0;
-    const shakeDuration = 0.6;
-    
-    const shakeTick = () => {
-      shakeTime += 0.016;
-      const t = shakeTime / shakeDuration;
-      
-      if (t >= 1) {
-        this.camera.position.copy(originalPos);
-        return;
-      }
-      
-      const intensity = (1 - t) * 35;
-      this.camera.position.x = originalPos.x + (Math.random() - 0.5) * intensity;
-      this.camera.position.y = originalPos.y + (Math.random() - 0.5) * intensity * 1.2;
-      this.camera.position.z = originalPos.z + (Math.random() - 0.5) * intensity * 0.7;
-      
-      requestAnimationFrame(shakeTick);
-    };
-    
-    requestAnimationFrame(shakeTick);
-  }
-
-  // 💥 WHITE FLASH OVERLAY
-  const whiteOverlay = document.createElement('div');
-  whiteOverlay.style.position = 'fixed';
-  whiteOverlay.style.top = '0';
-  whiteOverlay.style.left = '0';
-  whiteOverlay.style.width = '100%';
-  whiteOverlay.style.height = '100%';
-  whiteOverlay.style.backgroundColor = 'white';
-  whiteOverlay.style.pointerEvents = 'none';
-  whiteOverlay.style.zIndex = '99999';
-  whiteOverlay.style.opacity = '0';
-  whiteOverlay.style.transition = 'opacity 0.05s ease-out';
-  document.body.appendChild(whiteOverlay);
-  
-  setTimeout(() => {
-    whiteOverlay.style.opacity = '0.85';
-    setTimeout(() => {
-      whiteOverlay.style.opacity = '0';
-      setTimeout(() => {
-        document.body.removeChild(whiteOverlay);
-      }, 150);
+  // FIX: Pooled flash overlay — reuse the single pre-created DOM element
+  private _triggerFlashOverlay(peakOpacity: number): void {
+    if (this._flashOverlayTimer) clearTimeout(this._flashOverlayTimer);
+    this._flashOverlay.style.opacity = String(peakOpacity);
+    this._flashOverlayTimer = setTimeout(() => {
+      this._flashOverlay.style.opacity = '0';
+      this._flashOverlayTimer = null;
     }, 60);
-  }, 0);
-
-  // 🌋 MUSHROOM CLOUD STEM
-  const stemCount = 30;
-  for (let i = 0; i < stemCount; i++) {
-    const mat = new THREE.SpriteMaterial({
-      map: flashTexture,
-      color: 0xff6644,
-      transparent: true,
-      opacity: 0.7,
-      blending: THREE.AdditiveBlending,
-    });
-
-    const sprite = new THREE.Sprite(mat);
-    const angle = Math.random() * Math.PI * 2;
-    const radius = (Math.random() - 0.5) * 600;
-    sprite.position.copy(pos.clone().add(new THREE.Vector3(
-      Math.cos(angle) * radius,
-      Math.random() * 200,
-      Math.sin(angle) * radius
-    )));
-    sprite.scale.setScalar(80 + Math.random() * 120);
-    this.scene.add(sprite);
-
-    let elapsed = 0;
-    const life = 0.8;
-    const riseSpeed = 45 + Math.random() * 35;
-
-    const tick = () => {
-      elapsed += 0.016;
-      const t = elapsed / life;
-
-      if (t >= 1) {
-        this.scene.remove(sprite);
-        mat.dispose();
-        return;
-      }
-
-      sprite.position.y += riseSpeed * (1 - t * 0.5);
-      sprite.scale.setScalar((80 + Math.random() * 120) * (1 + t * 0.8));
-      mat.opacity = 0.7 * (1 - Math.pow(t, 1.3));
-
-      requestAnimationFrame(tick);
-    };
-
-    requestAnimationFrame(tick);
   }
-}
 
   // ── TEXTURE GENERATION HELPERS ─────────────────────────────────
 
+  // FIX: Kept private — called only from constructor now, not lazily on first explosion
   private getOrCreateTexture(key: string, creator: () => THREE.CanvasTexture): THREE.CanvasTexture {
     if (!this.cachedTextures.has(key)) {
       this.cachedTextures.set(key, creator());
@@ -1245,11 +1201,11 @@ export class CombatSystem {
     ctx.clearRect(0, 0, 64, 64);
 
     const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-    gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+    gradient.addColorStop(0,   'rgba(255, 255, 255, 1)');
     gradient.addColorStop(0.3, 'rgba(255, 200, 100, 0.9)');
     gradient.addColorStop(0.6, 'rgba(255, 100, 0, 0.6)');
     gradient.addColorStop(0.8, 'rgba(255, 50, 0, 0.2)');
-    gradient.addColorStop(1, 'rgba(255, 0, 0, 0)');
+    gradient.addColorStop(1,   'rgba(255, 0, 0, 0)');
 
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, 64, 64);
@@ -1281,15 +1237,15 @@ export class CombatSystem {
     for (let i = 0; i < 8; i++) {
       const offsetX = (Math.random() - 0.5) * 40;
       const offsetY = (Math.random() - 0.5) * 40;
-      const radius = 30 + Math.random() * 25;
+      const radius  = 30 + Math.random() * 25;
 
       const gradient = ctx.createRadialGradient(
         64 + offsetX, 64 + offsetY, 0,
-        64 + offsetX, 64 + offsetY, radius
+        64 + offsetX, 64 + offsetY, radius,
       );
-      gradient.addColorStop(0, `rgba(100, 100, 100, ${0.3 + Math.random() * 0.2})`);
+      gradient.addColorStop(0,   `rgba(100, 100, 100, ${0.3 + Math.random() * 0.2})`);
       gradient.addColorStop(0.5, `rgba(80, 80, 80, ${0.15 + Math.random() * 0.1})`);
-      gradient.addColorStop(1, 'rgba(60, 60, 60, 0)');
+      gradient.addColorStop(1,   'rgba(60, 60, 60, 0)');
 
       ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, 128, 128);
