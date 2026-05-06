@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-// import { World } from './World';
+import { World } from './World';
 import { Cockpit } from './Cockpit';
 import { Controls } from './Controls';
 import { MobileControls } from './MobileControls';
@@ -26,7 +26,7 @@ export class Engine {
   private renderer: THREE.WebGLRenderer;
   private cockpit: Cockpit;
   private controls: Controls;
-  // private world: World;
+  private world: World;
   private enemies: EnemyManager;
   public combatSystem: CombatSystem;
   private notifications: NotificationSystem;
@@ -91,7 +91,6 @@ export class Engine {
     this.container.style.position = 'fixed';
     this.container.style.inset = '0';
     this.container.style.zIndex = '5';
-    // ✅ لون الـ background يطابق لون ضباب EgyptTerrain1973 (بيج رملي)
     this.container.style.background = '#C8B89A';
     document.body.appendChild(this.container);
 
@@ -116,17 +115,17 @@ export class Engine {
     this.controls       = new Controls();
     this.mobileControls = new MobileControls(this.container, this.controls);
 
-    // this.world = new World(
-    //   this.scene,
-    //   this.loadingManager,
-    //   {
-    //     terrainSize:     42000,
-    //     terrainSegments: this.isMobile ? 100 : 420,
-    //     riverWidth:      420,
-    //     cloudCount:      this.isMobile ? 3 : 10,
-    //   },
-    //   this.renderer,
-    // );
+    this.world = new World(
+      this.scene,
+      this.loadingManager,
+      {
+        terrainSize:     42000,
+        terrainSegments: this.isMobile ? 100 : 420,
+        riverWidth:      420,
+        cloudCount:      this.isMobile ? 3 : 10,
+      },
+      this.renderer,
+    );
 
     this.projectileManager = new ProjectileManager(this.scene);
 
@@ -364,7 +363,7 @@ export class Engine {
 
     if (this.cockpit)         this.cockpit.update(delta);
     if (this.transitionPlane) this.transitionPlane?.update();
-    // if (this.world)           this.world.update(delta, this.cockpit.model?.position, (this.cockpit as any).angles?.yaw ?? 0);
+    if (this.world)           this.world.update(delta, this.cockpit.model?.position, (this.cockpit as any).angles?.yaw ?? 0);
     if (this.enemies)         this.enemies.update(delta);
     if (this.alliedPlanes)     this.alliedPlanes.update(delta);
     
@@ -399,7 +398,7 @@ export class Engine {
     if (this.missionController2) { this.missionController2.reset(); this.missionController2 = null; }
 
     if (this.transitionPlane)      { this.transitionPlane.dispose(); this.transitionPlane = null; }
-    // if (this.world)                this.world.dispose();
+    if (this.world)                this.world.dispose();
     if (this.mobileControls)       this.mobileControls.destroy();
     if (this.cockpit.weaponSystem) this.cockpit.weaponSystem.dispose();
     if (this.cockpit) (this.cockpit as any).dispose();
