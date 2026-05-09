@@ -141,7 +141,6 @@ export class MissionController2 {
     if (this.victoryDeclared) return;
     this.victoryDeclared = true;
 
-    // FIX: Reuse a single Audio element — no recreation if victory fires again
     const audio = new Audio('/sounds/vectory.m4a');
     audio.loop = false;
     audio.volume = 0.8;
@@ -170,9 +169,70 @@ export class MissionController2 {
       audio.addEventListener('loadedmetadata', playClip, { once: true });
     }
 
+    // ── شغّل الفيديو الأول ثم اعرض الـ popup فوقيه ──────────────
     setTimeout(() => {
-      this.showWinPopup();
+      this.playWinVideo(() => this.showWinPopup());
     }, 100);
+  }
+
+  // ── method جديدة ──────────────────────────────────────────────────
+  private playWinVideo(onVideoEnd: () => void): void {
+    const wrapper = document.createElement('div');
+    Object.assign(wrapper.style, {
+      position:   'fixed',
+      inset:      '0',
+      width:      '100vw',
+      height:     '100vh',
+      background: '#000',
+      zIndex:     '15000',   // فوق اللعبة وتحت الـ popup (اللي عنده 20000)
+    });
+
+    const video = document.createElement('video');
+    video.src         = '/videos/win_battle.mp4';
+    video.playsInline = true;
+    video.preload     = 'auto';
+    Object.assign(video.style, {
+      width:     '100%',
+      height:    '100%',
+      objectFit: 'cover',
+      display:   'block',
+    });
+
+    // Fade overlay
+    const overlay = document.createElement('div');
+    Object.assign(overlay.style, {
+      position:      'absolute',
+      inset:         '0',
+      background:    '#000',
+      opacity:       '1',
+      transition:    'opacity 1s ease',
+      pointerEvents: 'none',
+      zIndex:        '1',
+    });
+
+    wrapper.appendChild(video);
+    wrapper.appendChild(overlay);
+    document.body.appendChild(wrapper);
+
+    video.play().catch(console.error);
+
+    // fade in
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        overlay.style.opacity = '0';
+      });
+    });
+
+    // لما الفيديو يخلص → fade out → اعرض الـ popup والفيديو يفضل شغال في الخلفية
+    video.addEventListener('ended', () => {
+      overlay.style.opacity = '1';
+
+      setTimeout(() => {
+        overlay.remove();   // شيل الـ overlay بس، الفيديو يفضل ظاهر في الخلفية
+        video.pause();      // وقّف الفيديو عند آخر فريم
+        onVideoEnd();       // ← هنا بيظهر الـ win popup فوق الفيديو
+      }, 1000);
+    });
   }
 
   private showWinPopup() {

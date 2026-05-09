@@ -3,6 +3,7 @@ import { MainMenuScene } from './scenes/MainMenuScene';
 import { NarrativeScene } from './scenes/NarrativeScene';
 import { Engine } from './scenes/game/Engine';
 import { OrientationGuard } from './utils/OrientationGuard';
+import { VideoScene } from './utils/VideoScene';
 
 const orientationGuard = new OrientationGuard();
 
@@ -23,13 +24,17 @@ function launchGame(existingEngine?: Engine): void {
     narrative.show();
 
     narrative.onComplete(() => {
-      engine.show();
-      engine.init({
-        onRestart: () => launchGame(engine),
-        onExit:    () => {
-          engine.destroy();
-          showMainMenu();
-        },
+      const intro = new VideoScene(document.body, '/videos/go_to_battle.mp4');
+      intro.show();
+      intro.onComplete(() => {
+        engine.show();
+        engine.init({
+          onRestart: () => launchGame(engine),
+          onExit:    () => {
+            engine.destroy();
+            showMainMenu();
+          },
+        });
       });
     });
   });
@@ -58,13 +63,17 @@ gameEngine.onReady(() => {
     narrative.show();
 
     narrative.onComplete(() => {
-      gameEngine.show();
-      gameEngine.init({
-        onRestart: () => launchGame(gameEngine),
-        onExit:    () => {
-          gameEngine.destroy();
-          showMainMenu();
-        },
+      const intro = new VideoScene(document.body, '/videos/go_to_battle.mp4');
+      intro.show();
+      intro.onComplete(() => {
+        gameEngine.show();
+        gameEngine.init({
+          onRestart: () => launchGame(gameEngine),
+          onExit:    () => {
+            gameEngine.destroy();
+            showMainMenu();
+          },
+        });
       });
     });
   });
