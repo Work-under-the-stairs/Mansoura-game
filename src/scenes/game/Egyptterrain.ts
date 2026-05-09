@@ -1,208 +1,87 @@
 import * as THREE from 'three';
+import { MiniMap } from './MiniMap';
 
 // ============================================================
 //  EgyptTerrain_DETAILED.ts
-//  Procedural sky + infinite terrain + TEXTURE-MAPPED GROUND
-//  مصر ١٩٧٣: دلتا النيل + الصحراء + سيناء
+//  Procedural sky + FLAT infinite terrain + TEXTURE-MAPPED GROUND
+//  + MiniMap integrated here (World.ts no longer needed)
 // ============================================================
 
-// ---------- Simple Perlin / Value Noise (no dependencies) ----------
-function hash(n: number): number {
-  return (Math.sin(n * 127.1 + 311.7) * 43758.5453) % 1;
-}
-
-function smoothNoise2D(x: number, z: number): number {
-  const ix = Math.floor(x);
-  const iz = Math.floor(z);
-  const fx = x - ix;
-  const fz = z - iz;
-  const ux = fx * fx * (3 - 2 * fx);
-  const uz = fz * fz * (3 - 2 * fz);
-
-  const a = hash(ix     + iz * 57);
-  const b = hash(ix + 1 + iz * 57);
-  const c = hash(ix     + (iz + 1) * 57);
-  const d = hash(ix + 1 + (iz + 1) * 57);
-
-  return a + (b - a) * ux + (c - a) * uz + (a - b - c + d) * ux * uz;
-}
-
-function fbm(x: number, z: number, octaves: number, lacunarity = 2.0, gain = 0.5): number {
-  let value = 0, amplitude = 1, frequency = 1, max = 0;
-  for (let i = 0; i < octaves; i++) {
-    value    += smoothNoise2D(x * frequency, z * frequency) * amplitude;
-    max      += amplitude;
-    amplitude *= gain;
-    frequency *= lacunarity;
-  }
-  return value / max;
-}
-
-// ---------- Terrain height function — tuned for Egypt ----------
-export function egyptHeight(wx: number, wz: number): number {
-  const SCALE = 1 / 3000;
-  const nx = wx * SCALE;
-  const nz = wz * SCALE;
-
-  const desert = fbm(nx, nz, 5) * 120;
-
-  const sinaiInfluence = THREE.MathUtils.smoothstep(wx, 20000, 80000);
-  const sinai = fbm(nx * 0.4 + 10, nz * 0.4, 6, 2.1, 0.55) * 1200 * sinaiInfluence;
-
-  const deltaInfluence = THREE.MathUtils.smoothstep(-wz, 30000, 80000);
-  const delta = -desert * 0.8 * deltaInfluence;
-
-  const nileX = wx - 5000;
-  const nileValley = Math.exp(-(nileX * nileX) / (8000 * 8000)) * 60;
-
-  const raw = Math.max(0, desert + sinai + delta - nileValley);
-
-  return raw - 3000;
-}
-
 // ============================================================
-//  ProceduralSky — BLUE SKY + VISIBLE SUN
+//  ProceduralSky — simple gradient sky texture + plain sun circle
+//  No ShaderMaterial, no SphereGeometry artifacts
 // ============================================================
 export class ProceduralSky {
-  private mesh: THREE.Mesh;
-  private material: THREE.ShaderMaterial;
-  private sunObject: THREE.Mesh | null = null;
+  private scene: THREE.Scene;
+  private sunMesh: THREE.Mesh;
+  // Sun world position (fixed, far away)
+  private readonly SUN_DISTANCE = 300000;
+  private sunWorldPos = new THREE.Vector3(80000, 160000, -200000).normalize();
 
   constructor(scene: THREE.Scene) {
-    const geo = new THREE.SphereGeometry(450000, 64, 32);
+    this.scene = scene;
 
-    this.material = new THREE.ShaderMaterial({
-      vertexShader: `
-        varying vec3 vWorldPos;
-        varying vec3 vNormal;
-        
-        void main() {
-          vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
-          vNormal = normalize(normalMatrix * normal);
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform vec3  uSunDir;
-        uniform float uTime;
-        varying vec3  vWorldPos;
-        varying vec3  vNormal;
+    // ── 1. Sky: canvas gradient baked into a CubeRenderTarget background ──
+    //    Simplest approach: just set scene.background to a gradient texture
+    this.buildGradientBackground();
 
-        float rayleigh(float cosAngle) {
-          return 0.75 * (1.0 + cosAngle * cosAngle);
-        }
-
-        float mie(float cosAngle, float g) {
-          float g2 = g * g;
-          return (1.0 - g2) / pow(max(1.0 + g2 - 2.0 * g * cosAngle, 0.001), 1.5);
-        }
-
-        void main() {
-          vec3  dir      = normalize(vWorldPos);
-          float height   = clamp(dir.y, -1.0, 1.0);
-          float cosAngle = dot(dir, normalize(uSunDir));
-
-          vec3 zenith  = vec3(0.2, 0.5, 0.9);
-          vec3 horizon = vec3(0.7, 0.85, 1.0);
-          vec3 haze    = vec3(0.85, 0.9, 0.95);
-
-          float t = pow(max(height, 0.0), 0.4);
-          vec3 sky = mix(mix(haze, horizon, smoothstep(-0.1, 0.15, height)), zenith, t);
-
-          sky *= 1.0 + rayleigh(cosAngle) * 0.3;
-
-          float sunGlow   = mie(cosAngle, 0.9997);
-          float sunCorona = mie(cosAngle, 0.985) * 0.5;
-          vec3  sunColor  = vec3(1.0, 0.95, 0.7);
-
-          float sunDisk = smoothstep(0.02, 0.015, acos(cosAngle) / 3.14159);
-          sky += sunColor * (sunGlow * 0.3 + sunCorona * 0.15 + sunDisk * 2.0);
-
-          float groundBlend = smoothstep(-0.2, 0.08, height);
-          vec3 groundColor  = vec3(0.8, 0.75, 0.65);
-          sky = mix(groundColor, sky, groundBlend);
-
-          sky = sky / (sky + vec3(1.0));
-          sky = pow(sky, vec3(1.0 / 2.2));
-
-          gl_FragColor = vec4(sky, 1.0);
-        }
-      `,
-      uniforms: {
-        uSunDir: { value: new THREE.Vector3(0.3, 0.6, -0.5).normalize() },
-        uTime:   { value: 0.0 },
-      },
-      side: THREE.BackSide,
+    // ── 2. Sun: plain white emissive circle, no transparency tricks ──
+    const sunGeo = new THREE.CircleGeometry(10000, 48);
+    const sunMat = new THREE.MeshBasicMaterial({
+      color:     0xFFFDE8,
+      fog:       false,
+      depthTest: false,   // always on top of sky
       depthWrite: false,
-      // fog: true,
     });
+    this.sunMesh = new THREE.Mesh(sunGeo, sunMat);
+    this.sunMesh.renderOrder = -1;
 
-    this.mesh = new THREE.Mesh(geo, this.material);
-    this.mesh.renderOrder = -1;
-    scene.add(this.mesh);
+    // Position sun far away in a fixed direction
+    const sunPos = new THREE.Vector3(0.3, 0.55, -0.6).normalize().multiplyScalar(this.SUN_DISTANCE);
+    this.sunMesh.position.copy(sunPos);
+    this.sunWorldPos.copy(sunPos);
 
-    this.createSunObject(scene);
+    // Make it always face the camera (billboard)
+    scene.add(this.sunMesh);
   }
 
-  private createSunObject(scene: THREE.Scene): void {
-    const sunGlowGeo = new THREE.SphereGeometry(15000, 32, 32);
-    const sunGlowMat = new THREE.MeshBasicMaterial({
-      color: 0xFFEE99,
-      transparent: true,
-      opacity: 0.6,
-      fog: false,
-    });
-    const sunGlow = new THREE.Mesh(sunGlowGeo, sunGlowMat);
-    sunGlow.renderOrder = -0.5;
-    scene.add(sunGlow);
+  private buildGradientBackground(): void {
+    // Draw a vertical gradient on a canvas: horizon (light blue) → zenith (deep blue)
+    const W = 2, H = 512;
+    const canvas = document.createElement('canvas');
+    canvas.width  = W;
+    canvas.height = H;
+    const ctx = canvas.getContext('2d')!;
 
-    const sunDiskGeo = new THREE.SphereGeometry(8000, 32, 32);
-    const sunDiskMat = new THREE.MeshBasicMaterial({
-      color: 0xFFEE99,
-      fog: false,
-    });
-    const sunDisk = new THREE.Mesh(sunDiskGeo, sunDiskMat);
-    sunDisk.renderOrder = -0.4;
-    scene.add(sunDisk);
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0.0,  '#3a7bd5'); // zenith — deep blue
+    grad.addColorStop(0.55, '#6aaee8'); // mid sky
+    grad.addColorStop(0.80, '#a8d0ef'); // near horizon
+    grad.addColorStop(1.0,  '#c8e0f0'); // horizon haze
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
 
-    this.sunObject = sunGlow;
-    this.sunObject.userData.diskMesh = sunDisk;
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.mapping = THREE.UVMapping;
+
+    // Use a large skybox quad approach: set scene.background directly
+    this.scene.background = tex;
   }
 
-  update(camera: THREE.Camera, deltaTime: number): void {
-    this.mesh.position.copy(camera.position);
-    this.material.uniforms.uTime.value += deltaTime;
-
-    if (this.sunObject) {
-      const sunDir = this.material.uniforms.uSunDir.value as THREE.Vector3;
-      const sunPos = sunDir.clone().multiplyScalar(300000).add(camera.position);
-      this.sunObject.position.copy(sunPos);
-      if (this.sunObject.userData.diskMesh) {
-        this.sunObject.userData.diskMesh.position.copy(sunPos);
-      }
-    }
+  update(camera: THREE.Camera, _deltaTime: number): void {
+    // Sun always faces camera (billboard)
+    this.sunMesh.lookAt(camera.position);
   }
 
-  setTimeOfDay(t: number): void {
-    const angle  = (t * Math.PI * 2) - Math.PI / 2;
-    const sunDir = new THREE.Vector3(
-      Math.cos(angle) * 0.7,
-      Math.sin(angle) * 0.8,
-      Math.sin(angle) * 0.3
-    ).normalize();
-    this.material.uniforms.uSunDir.value.copy(sunDir);
-  }
-
-  setSunDirection(sunDir: THREE.Vector3): void {
-    this.material.uniforms.uSunDir.value.copy(sunDir.normalize());
-  }
+  setTimeOfDay(_t: number): void { /* no-op for simple sky */ }
+  setSunDirection(_sunDir: THREE.Vector3): void { /* no-op for simple sky */ }
 }
 
 // ============================================================
-//  InfiniteTerrain — texture-mapped sand ground
+//  InfiniteTerrain — FLAT texture-mapped ground (no height variation)
 // ============================================================
 const CHUNK_SIZE  = 8000;
-const CHUNK_SEGS  = 128;
+const CHUNK_SEGS  = 1;      // ✅ 1 segment only — perfectly flat, no bumps
 const VIEW_RADIUS = 2;
 
 interface Chunk {
@@ -217,6 +96,7 @@ export class InfiniteTerrain {
   private material: THREE.ShaderMaterial;
   private lastCX = Infinity;
   private lastCZ = Infinity;
+  private readonly FLAT_Y = -3000; // constant ground level
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -248,30 +128,22 @@ export class InfiniteTerrain {
         uniform int       uTextureLoaded;
 
         #include <fog_pars_fragment>
+
         void main() {
           vec3 texColor;
 
           if (uTextureLoaded == 1) {
-            // Tile the texture 32x across each chunk
-            texColor = texture2D(uSandTexture, vUv * 1.0).rgb;
+            texColor = texture2D(uSandTexture, vUv).rgb;
           } else {
-            // Fallback yellow sand color while texture loads
+            // Fallback sand color while texture loads
             texColor = vec3(0.93, 0.85, 0.54);
           }
 
-          // Diffuse lighting
-          // float diffuse = max(0.3, dot(vNormal, normalize(uSunDir)));
-          float diffuse = 0.8;
           float ambient = 0.5;
+          float diffuse = 0.8;
           float light   = ambient + diffuse * 0.7;
 
-          // Specular highlight
-          vec3  viewDir  = normalize(-vPosition);
-          vec3  halfDir  = normalize(normalize(uSunDir) + viewDir);
-          // float specular = pow(max(0.0, dot(vNormal, halfDir)), 16.0) * 0.2;
-          float specular = 0.0;
-
-          vec3 finalColor = texColor * light + vec3(1.0) * specular;
+          vec3 finalColor = texColor * light;
           gl_FragColor    = vec4(finalColor, 1.0);
 
           #include <fog_fragment>
@@ -283,17 +155,15 @@ export class InfiniteTerrain {
         uTextureLoaded: { value: 0 },
       },
       side: THREE.FrontSide,
-      // fog: true,
     });
 
-    // Load sand texture
+    // Load sand/ground texture
     const loader = new THREE.TextureLoader();
     loader.load(
-      // '/images/d0be88cc1c3bf4c4b76b2925ebec0014.jpg',
       '/images/gg.png',
       (tex) => {
-        tex.wrapS    = THREE.RepeatWrapping;
-        tex.wrapT    = THREE.RepeatWrapping;
+        tex.wrapS      = THREE.RepeatWrapping;
+        tex.wrapT      = THREE.RepeatWrapping;
         tex.repeat.set(1, 1);
         tex.anisotropy = 16;
         this.material.uniforms.uSandTexture.value   = tex;
@@ -301,7 +171,7 @@ export class InfiniteTerrain {
       },
       undefined,
       (err) => {
-        console.warn('[InfiniteTerrain] Could not load /textures/sand.jpg — using fallback color.', err);
+        console.warn('[InfiniteTerrain] Could not load /images/gg.png — using fallback color.', err);
       }
     );
   }
@@ -336,33 +206,28 @@ export class InfiniteTerrain {
   }
 
   private buildChunk(cx: number, cz: number, key: string): void {
+    // ✅ FLAT plane — 1 segment, no height displacement at all
     const geo = new THREE.PlaneGeometry(CHUNK_SIZE, CHUNK_SIZE, CHUNK_SEGS, CHUNK_SEGS);
     geo.rotateX(-Math.PI / 2);
 
-    const positions = geo.attributes.position as THREE.BufferAttribute;
-
-    for (let i = 0; i < positions.count; i++) {
-      const wx = positions.getX(i) + cx * CHUNK_SIZE;
-      const wz = positions.getZ(i) + cz * CHUNK_SIZE;
-      positions.setY(i, egyptHeight(wx, wz));
-    }
-
-    positions.needsUpdate = true;
     geo.computeVertexNormals();
 
     const mesh = new THREE.Mesh(geo, this.material);
-    mesh.position.set(cx * CHUNK_SIZE, 0, cz * CHUNK_SIZE);
+    // ✅ All chunks sit at the same flat Y level
+    mesh.position.set(cx * CHUNK_SIZE, this.FLAT_Y, cz * CHUNK_SIZE);
 
     this.scene.add(mesh);
     this.chunks.set(key, { mesh, cx, cz });
   }
 
-  getHeightAt(x: number, z: number): number {
-    return egyptHeight(x, z);
+  /** Always returns the flat ground level */
+  getHeightAt(_x: number, _z: number): number {
+    return this.FLAT_Y;
   }
 
-  getMinCameraHeight(x: number, z: number, minClearance = 80): number {
-    return egyptHeight(x, z) + minClearance;
+  /** Returns flat ground level + clearance */
+  getMinCameraHeight(_x: number, _z: number, minClearance = 80): number {
+    return this.FLAT_Y + minClearance;
   }
 
   setSunDirection(sunDir: THREE.Vector3): void {
@@ -370,13 +235,13 @@ export class InfiniteTerrain {
   }
 }
 
-
 // ============================================================
 //  DistanceFog
 // ============================================================
 export function setupFog(scene: THREE.Scene): void {
-  scene.fog = new THREE.FogExp2(0xB0D4E8, 0.000025);
-  scene.background = new THREE.Color(0xB0D4E8);
+  // ✅ fog color matches horizon — do NOT set scene.background here
+  //    (ProceduralSky sets the gradient background in its constructor)
+  scene.fog = new THREE.FogExp2(0xC8E0F0, 0.000025);
 }
 
 // ============================================================
@@ -407,6 +272,56 @@ export function setupLighting(scene: THREE.Scene): {
 }
 
 // ============================================================
+//  EgyptWorld — replaces World.ts, owns sky + terrain + MiniMap
+// ============================================================
+export class EgyptWorld {
+  private sky: ProceduralSky;
+  private terrain: InfiniteTerrain;
+  private miniMap?: MiniMap;
+
+  constructor(scene: THREE.Scene, mapImageUrl?: string) {
+    this.sky     = new ProceduralSky(scene);
+    this.terrain = new InfiniteTerrain(scene);
+
+    const mapUrl = mapImageUrl || '/images/map-Picsart-AiImageEnhancer.png';
+    this.miniMap = new MiniMap({
+      mapImageUrl: mapUrl,
+      width:  500,
+      height: 200,
+    });
+  }
+
+  /**
+   * Call each frame from your main loop.
+   * @param deltaTime    Seconds since last frame.
+   * @param camera       Active camera (used to follow sky dome).
+   * @param playerPos    World-space position for minimap.
+   * @param playerYaw    Current yaw in radians for minimap arrow.
+   */
+  update(
+    deltaTime: number,
+    camera: THREE.Camera,
+    playerPos?: THREE.Vector3,
+    playerYaw?: number
+  ): void {
+    this.sky.update(camera, deltaTime);
+    this.terrain.update(camera.position);
+
+    if (this.miniMap) {
+      if (playerPos)            this.miniMap.updatePlayerPosition(playerPos.x, playerPos.z);
+      if (playerYaw !== undefined) this.miniMap.updateHeading(playerYaw);
+    }
+  }
+
+  getSky():     ProceduralSky    { return this.sky;     }
+  getTerrain(): InfiniteTerrain  { return this.terrain; }
+
+  dispose(): void {
+    if (this.miniMap) this.miniMap.dispose();
+  }
+}
+
+// ============================================================
 //  Settings UI
 // ============================================================
 export class SettingsUI {
@@ -415,8 +330,8 @@ export class SettingsUI {
   private settings: {
     terrainDetail: number;
     sunBrightness: number;
-    fogDensity: number;
-    ambientLight: number;
+    fogDensity:    number;
+    ambientLight:  number;
   } = {
     terrainDetail: 1.0,
     sunBrightness: 1.0,
@@ -425,10 +340,10 @@ export class SettingsUI {
   };
 
   constructor(
-    scene: THREE.Scene,
+    scene:   THREE.Scene,
     terrain: InfiniteTerrain,
-    sky: ProceduralSky,
-    lights: { sun: THREE.DirectionalLight; ambient: THREE.AmbientLight }
+    sky:     ProceduralSky,
+    lights:  { sun: THREE.DirectionalLight; ambient: THREE.AmbientLight }
   ) {
     this.container = this.createUI();
     document.body.appendChild(this.container);
@@ -529,11 +444,6 @@ export class SettingsUI {
       <button class="settings-button" title="Settings">⚙️</button>
       <div class="settings-panel">
         <div class="settings-item">
-          <label class="settings-label">Terrain Detail</label>
-          <input type="range" class="settings-slider" id="terrain-detail" min="0.5" max="2.0" step="0.1" value="1.0">
-          <span class="settings-value" id="terrain-detail-value">1.0x</span>
-        </div>
-        <div class="settings-item">
           <label class="settings-label">Sun Brightness</label>
           <input type="range" class="settings-slider" id="sun-brightness" min="0.5" max="2.0" step="0.1" value="1.0">
           <span class="settings-value" id="sun-brightness-value">1.0x</span>
@@ -554,10 +464,10 @@ export class SettingsUI {
   }
 
   private setupEventListeners(
-    scene: THREE.Scene,
-    terrain: InfiniteTerrain,
-    sky: ProceduralSky,
-    lights: { sun: THREE.DirectionalLight; ambient: THREE.AmbientLight }
+    scene:   THREE.Scene,
+    _terrain: InfiniteTerrain,
+    _sky:    ProceduralSky,
+    lights:  { sun: THREE.DirectionalLight; ambient: THREE.AmbientLight }
   ): void {
     const button = this.container.querySelector('.settings-button') as HTMLButtonElement;
     const panel  = this.container.querySelector('.settings-panel') as HTMLDivElement;
@@ -567,11 +477,7 @@ export class SettingsUI {
       panel.classList.toggle('open');
     });
 
-    const bind = (
-      id: string,
-      valueId: string,
-      onChange: (v: number) => void
-    ) => {
+    const bind = (id: string, valueId: string, onChange: (v: number) => void) => {
       const slider = this.container.querySelector(`#${id}`) as HTMLInputElement;
       const label  = this.container.querySelector(`#${valueId}`) as HTMLSpanElement;
       slider.addEventListener('input', (e) => {
@@ -581,13 +487,19 @@ export class SettingsUI {
       });
     };
 
-    bind('terrain-detail',  'terrain-detail-value',  (v) => { this.settings.terrainDetail = v; });
-    bind('sun-brightness',  'sun-brightness-value',  (v) => { this.settings.sunBrightness = v; lights.sun.intensity     = 2.0 * v; });
-    bind('fog-density',     'fog-density-value',     (v) => { this.settings.fogDensity    = v; if (scene.fog instanceof THREE.FogExp2) scene.fog.density = 0.000025 * v; });
-    bind('ambient-light',   'ambient-light-value',   (v) => { this.settings.ambientLight  = v; lights.ambient.intensity = 0.8 * v; });
+    bind('sun-brightness', 'sun-brightness-value', (v) => {
+      this.settings.sunBrightness = v;
+      lights.sun.intensity = 3.0 * v;
+    });
+    bind('fog-density', 'fog-density-value', (v) => {
+      this.settings.fogDensity = v;
+      if (scene.fog instanceof THREE.FogExp2) scene.fog.density = 0.000025 * v;
+    });
+    bind('ambient-light', 'ambient-light-value', (v) => {
+      this.settings.ambientLight  = v;
+      lights.ambient.intensity = 2.0 * v;
+    });
   }
 
-  getSettings() {
-    return this.settings;
-  }
+  getSettings() { return this.settings; }
 }

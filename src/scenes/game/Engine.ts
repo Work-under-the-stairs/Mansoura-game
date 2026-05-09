@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { World } from './World';
+// import { World } from './World';
 import { Cockpit } from './Cockpit';
 import { Controls } from './Controls';
 import { MobileControls } from './MobileControls';
@@ -16,7 +16,7 @@ import { AlliedPlaneManager } from './AlliedPlane';
 
 
 // ✅ النظام الجديد — بديل EXR كاملاً
-import { ProceduralSky, InfiniteTerrain, setupFog, setupLighting } from './Egyptterrain';
+import { ProceduralSky, InfiniteTerrain, setupFog, setupLighting, EgyptWorld } from './Egyptterrain';
 
 export class Engine {
   private loadingScene: LoadingScene;
@@ -26,7 +26,7 @@ export class Engine {
   private renderer: THREE.WebGLRenderer;
   private cockpit: Cockpit;
   private controls: Controls;
-  private world: World;
+  private world: EgyptWorld;
   private enemies: EnemyManager;
   public combatSystem: CombatSystem;
   private notifications: NotificationSystem;
@@ -115,16 +115,8 @@ export class Engine {
     this.controls       = new Controls();
     this.mobileControls = new MobileControls(this.container, this.controls);
 
-    this.world = new World(
+    this.world = new EgyptWorld(
       this.scene,
-      this.loadingManager,
-      {
-        terrainSize:     42000,
-        terrainSegments: this.isMobile ? 100 : 420,
-        riverWidth:      420,
-        cloudCount:      this.isMobile ? 3 : 10,
-      },
-      this.renderer,
     );
 
     this.projectileManager = new ProjectileManager(this.scene);
@@ -363,7 +355,7 @@ export class Engine {
 
     if (this.cockpit)         this.cockpit.update(delta);
     if (this.transitionPlane) this.transitionPlane?.update();
-    if (this.world)           this.world.update(delta, this.cockpit.model?.position, (this.cockpit as any).angles?.yaw ?? 0);
+    if (this.world)           this.world.update(delta,this.camera, this.cockpit.model?.position, (this.cockpit as any).angles?.yaw ?? 0);
     if (this.enemies)         this.enemies.update(delta);
     if (this.alliedPlanes)     this.alliedPlanes.update(delta);
     
